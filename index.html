@@ -1,0 +1,1429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Phonk Maker - Advanced Multi-Track Audio Editor</title>
+
+<meta name="theme-color" content="#111111" />
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🎵</text></svg>" />
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono&display=swap');
+
+  /* Reset & base */
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+  body, html {
+    margin: 0; padding: 0;
+    height: 100%;
+    font-family: 'Roboto Mono', monospace, monospace;
+    background-color: #121212;
+    color: #eee;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    overflow: hidden;
+  }
+
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+  }
+
+  header {
+    background: #1f1f1f;
+    padding: 10px 20px;
+    font-size: 1.4rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    user-select: text;
+  }
+
+  header h1 {
+    margin: 0;
+  }
+
+  #controls {
+    background: #222;
+    display: flex;
+    padding: 10px 20px;
+    gap: 15px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  button, select, input[type=range] {
+    background: #333;
+    color: #eee;
+    border: none;
+    border-radius: 5px;
+    padding: 7px 12px;
+    font-size: 1rem;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s;
+  }
+
+  button:hover, select:hover, input[type=range]:hover {
+    background: #555;
+  }
+
+  button:disabled {
+    background: #555;
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  #timeline-container {
+    flex: 1;
+    background: #181818;
+    position: relative;
+    overflow: auto;
+    border-top: 1px solid #333;
+    border-bottom: 1px solid #333;
+  }
+
+  #timeline {
+    position: relative;
+    height: 300px;
+    min-width: 2000px;
+  }
+
+  .track {
+    position: relative;
+    height: 70px;
+    border-bottom: 1px solid #333;
+    user-select: none;
+  }
+
+  .track-label {
+    position: absolute;
+    left: 0; top: 0;
+    width: 120px;
+    height: 70px;
+    background: #222;
+    color: #ccc;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-right: 1px solid #444;
+    pointer-events: none;
+  }
+
+  .clips-container {
+    position: absolute;
+    left: 120px;
+    right: 0;
+    top: 0;
+    height: 70px;
+  }
+
+  .clip {
+    position: absolute;
+    top: 10px;
+    height: 50px;
+    background: #bb86fc;
+    border-radius: 4px;
+    cursor: grab;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    font-size: 0.75rem;
+    color: #111;
+    user-select: none;
+    box-shadow: 0 0 8px rgba(187, 134, 252, 0.5);
+    transition: box-shadow 0.3s ease;
+  }
+
+  .clip.dragging {
+    cursor: grabbing;
+    box-shadow: 0 0 16px #fff;
+    z-index: 10;
+  }
+
+  .clip:hover {
+    box-shadow: 0 0 12px #eee;
+  }
+
+  .clip .resize-handle {
+    width: 8px;
+    height: 100%;
+    cursor: ew-resize;
+    position: absolute;
+    top: 0;
+  }
+  .clip .resize-left {
+    left: 0;
+  }
+  .clip .resize-right {
+    right: 0;
+  }
+
+  #track-controls {
+    background: #222;
+    padding: 10px 20px;
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .control-group {
+    display: flex;
+    flex-direction: column;
+  }
+
+  label {
+    font-size: 0.8rem;
+    color: #aaa;
+    margin-bottom: 3px;
+    user-select: none;
+  }
+
+  input[type=range] {
+    width: 100px;
+  }
+
+  #tracks-list {
+    max-height: 140px;
+    overflow-y: auto;
+    border: 1px solid #333;
+    padding: 5px;
+    background: #222;
+    margin-top: 5px;
+    font-size: 0.8rem;
+  }
+
+  #tracks-list div {
+    padding: 2px 5px;
+    border-bottom: 1px solid #333;
+    display: flex;
+    justify-content: space-between;
+    cursor: pointer;
+  }
+
+  #tracks-list div:last-child {
+    border-bottom: none;
+  }
+
+  #tracks-list div:hover {
+    background: #333;
+  }
+
+  /* Scrollbar styling */
+  #timeline-container::-webkit-scrollbar {
+    height: 12px;
+  }
+  #timeline-container::-webkit-scrollbar-track {
+    background: #111;
+  }
+  #timeline-container::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 6px;
+  }
+
+  #timeline-container::-webkit-scrollbar-thumb:hover {
+    background: #777;
+  }
+
+  #statusbar {
+    background: #1f1f1f;
+    color: #aaa;
+    font-size: 0.85rem;
+    padding: 6px 20px;
+    user-select: none;
+  }
+
+  /* Wavesurfer container */
+  .wavesurfer-container {
+    position: relative;
+    height: 50px;
+    user-select: none;
+  }
+
+  /* Metronome */
+  #metronome-toggle {
+    margin-left: 5px;
+  }
+
+  /* Responsive */
+  @media (max-width: 700px) {
+    #timeline {
+      min-width: 1200px;
+    }
+    #track-controls {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    #controls {
+      flex-direction: column;
+      gap: 10px;
+    }
+  }
+</style>
+
+<!-- External libs -->
+<script src="https://unpkg.com/wavesurfer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+
+</head>
+<body>
+
+<div id="app">
+  <header>
+    <h1>Phonk Maker 🎵</h1>
+    <div>
+      <button id="btn-add-track" title="Add new empty track">+ Track</button>
+      <button id="btn-record" title="Record audio to new track (mic)">🎤 Record</button>
+      <button id="btn-play" title="Play all tracks">▶️ Play</button>
+      <button id="btn-pause" title="Pause playback" disabled>⏸ Pause</button>
+      <button id="btn-stop" title="Stop playback" disabled>■ Stop</button>
+      <button id="btn-export-mix" title="Export mix as MP3/WAV" disabled>💾 Export Mix</button>
+      <button id="btn-export-stems" title="Export stems (tracks individually)" disabled>💿 Export Stems</button>
+      <button id="btn-save-project" title="Save project locally">💾 Save</button>
+      <button id="btn-load-project" title="Load project">📂 Load</button>
+      <input type="file" id="file-loader" accept="audio/*" multiple style="display:none"/>
+    </div>
+  </header>
+
+  <div id="controls">
+    <label>Tempo: <span id="tempo-label">120</span> BPM
+      <input type="range" id="tempo" min="60" max="200" value="120" />
+    </label>
+
+    <label>Metronome
+      <input type="checkbox" id="metronome-toggle" />
+    </label>
+
+    <label>Zoom Timeline
+      <input type="range" id="zoom-timeline" min="0.5" max="3" step="0.05" value="1" />
+    </label>
+  </div>
+
+  <div id="timeline-container">
+    <div id="timeline"></div>
+  </div>
+
+  <div id="track-controls">
+    <div class="control-group">
+      <label for="volume">Volume</label>
+      <input type="range" id="volume" min="0" max="2" step="0.01" value="1" />
+    </div>
+    <div class="control-group">
+      <label for="pan">Pan</label>
+      <input type="range" id="pan" min="-1" max="1" step="0.01" value="0" />
+    </div>
+    <div class="control-group">
+      <label for="mute">Mute</label>
+      <input type="checkbox" id="mute" />
+    </div>
+    <div class="control-group">
+      <label for="solo">Solo</label>
+      <input type="checkbox" id="solo" />
+    </div>
+    <div class="control-group" style="min-width:180px;">
+      <label for="effects-select">Effect</label>
+      <select id="effects-select">
+        <option value="none">None</option>
+        <option value="lowpass">Lowpass</option>
+        <option value="highpass">Highpass</option>
+        <option value="delay">Delay</option>
+        <option value="reverb">Reverb</option>
+        <option value="compressor">Compressor</option>
+        <option value="distortion">Distortion</option>
+        <option value="chorus">Chorus</option>
+      </select>
+    </div>
+    <div class="control-group" style="min-width:250px;">
+      <label for="effect-param">Effect Parameter</label>
+      <input type="range" id="effect-param" min="0" max="1" step="0.01" value="0.5" />
+    </div>
+  </div>
+
+  <div id="statusbar">Ready</div>
+</div>
+
+<script>
+(async () => {
+  'use strict';
+
+  const app = document.getElementById('app');
+  const timeline = document.getElementById('timeline');
+  const tempoInput = document.getElementById('tempo');
+  const tempoLabel = document.getElementById('tempo-label');
+  const metronomeToggle = document.getElementById('metronome-toggle');
+  const zoomTimeline = document.getElementById('zoom-timeline');
+  const btnAddTrack = document.getElementById('btn-add-track');
+  const btnRecord = document.getElementById('btn-record');
+  const btnPlay = document.getElementById('btn-play');
+  const btnPause = document.getElementById('btn-pause');
+  const btnStop = document.getElementById('btn-stop');
+  const btnExportMix = document.getElementById('btn-export-mix');
+  const btnExportStems = document.getElementById('btn-export-stems');
+  const btnSaveProject = document.getElementById('btn-save-project');
+  const btnLoadProject = document.getElementById('btn-load-project');
+  const fileLoader = document.getElementById('file-loader');
+  const statusbar = document.getElementById('statusbar');
+
+  const volumeControl = document.getElementById('volume');
+  const panControl = document.getElementById('pan');
+  const muteControl = document.getElementById('mute');
+  const soloControl = document.getElementById('solo');
+  const effectsSelect = document.getElementById('effects-select');
+  const effectParam = document.getElementById('effect-param');
+
+  // Constants
+  const TRACK_HEIGHT = 70;
+  const CLIP_MIN_WIDTH = 40;
+  const SECONDS_PER_PIXEL_BASE = 0.05; // Timeline zoom base seconds per pixel
+
+  // App state
+  let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  let tracks = []; // Array of Track objects
+  let isPlaying = false;
+  let startTime = 0;
+  let scheduledEvents = [];
+  let selectedTrackIndex = -1;
+  let zoom = 1;
+
+  // Undo stack
+  const undoStack = [];
+  let undoIndex = -1;
+
+  // Metronome variables
+  let metronomeInterval = null;
+  let metronomeOscillator = null;
+
+  // FFmpeg for export
+  const { createFFmpeg, fetchFile } = FFmpeg;
+  const ffmpeg = createFFmpeg({ log: false });
+
+  // Helpers
+  function setStatus(msg) {
+    statusbar.textContent = msg;
+  }
+
+  // Track class
+  class Track {
+    constructor(name) {
+      this.name = name || `Track ${tracks.length + 1}`;
+      this.clips = []; // Array of Clip objects
+      this.volume = 1;
+      this.pan = 0;
+      this.mute = false;
+      this.solo = false;
+      this.effects = []; // Array of { type, param } effects applied to track
+      this.wavesurfer = null;
+      this.container = null;
+      this.controls = {};
+      this.audioNodes = null;
+      this.bufferSources = [];
+      this.mediaRecorder = null;
+      this.recordedChunks = [];
+      this.stream = null;
+      this.isRecording = false;
+    }
+  }
+
+  // Clip class
+  class Clip {
+    constructor(buffer, startTime = 0, duration = null, name = 'Clip') {
+      this.buffer = buffer;
+      this.startTime = startTime;
+      this.duration = duration || buffer.duration;
+      this.name = name;
+      this.effects = []; // per-clip effects - unused for now
+    }
+  }
+
+  // Create new track UI
+  function createTrackUI(track, index) {
+    // Track container
+    const trackDiv = document.createElement('div');
+    trackDiv.className = 'track';
+    trackDiv.style.top = `${index * TRACK_HEIGHT}px`;
+    trackDiv.style.height = `${TRACK_HEIGHT}px`;
+    trackDiv.style.position = 'absolute';
+    trackDiv.dataset.trackIndex = index;
+
+    // Track label
+    const label = document.createElement('div');
+    label.className = 'track-label';
+    label.textContent = track.name;
+    trackDiv.appendChild(label);
+
+    // Clips container
+    const clipsContainer = document.createElement('div');
+    clipsContainer.className = 'clips-container';
+    trackDiv.appendChild(clipsContainer);
+
+    timeline.appendChild(trackDiv);
+
+    // Save UI references
+    track.container = trackDiv;
+    track.clipsContainer = clipsContainer;
+
+    // Render clips
+    renderClips(track, index);
+  }
+
+  // Render all clips of a track
+  function renderClips(track, trackIndex) {
+    const container = track.clipsContainer;
+    container.innerHTML = '';
+
+    const secondsPerPixel = SECONDS_PER_PIXEL_BASE / zoom;
+
+    for (let i = 0; i < track.clips.length; i++) {
+      const clip = track.clips[i];
+      const clipDiv = document.createElement('div');
+      clipDiv.className = 'clip';
+      clipDiv.dataset.clipIndex = i;
+
+      // Calculate clip position and width
+      const leftPx = clip.startTime / secondsPerPixel;
+      const widthPx = (clip.duration / secondsPerPixel);
+      clipDiv.style.left = `${leftPx}px`;
+      clipDiv.style.width = `${Math.max(widthPx, CLIP_MIN_WIDTH)}px`;
+
+      clipDiv.textContent = clip.name;
+
+      // Add resize handles
+      const resizeLeft = document.createElement('div');
+      resizeLeft.className = 'resize-handle resize-left';
+      clipDiv.appendChild(resizeLeft);
+
+      const resizeRight = document.createElement('div');
+      resizeRight.className = 'resize-handle resize-right';
+      clipDiv.appendChild(resizeRight);
+
+      // Events for drag and resize
+      makeClipDraggableResizable(clipDiv, trackIndex, i);
+
+      container.appendChild(clipDiv);
+    }
+  }
+
+  // Make clip draggable and resizable
+  function makeClipDraggableResizable(clipDiv, trackIndex, clipIndex) {
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartLeft = 0;
+    let isResizingLeft = false;
+    let isResizingRight = false;
+    let resizeStartX = 0;
+    let resizeStartLeft = 0;
+    let resizeStartWidth = 0;
+
+    const secondsPerPixel = () => SECONDS_PER_PIXEL_BASE / zoom;
+
+    clipDiv.addEventListener('mousedown', e => {
+      if (e.target.classList.contains('resize-left')) {
+        isResizingLeft = true;
+        resizeStartX = e.clientX;
+        resizeStartLeft = clipDiv.offsetLeft;
+        resizeStartWidth = clipDiv.offsetWidth;
+        e.preventDefault();
+      } else if (e.target.classList.contains('resize-right')) {
+        isResizingRight = true;
+        resizeStartX = e.clientX;
+        resizeStartLeft = clipDiv.offsetLeft;
+        resizeStartWidth = clipDiv.offsetWidth;
+        e.preventDefault();
+      } else {
+        isDragging = true;
+        dragStartX = e.clientX;
+        dragStartLeft = clipDiv.offsetLeft;
+        clipDiv.classList.add('dragging');
+        e.preventDefault();
+      }
+    });
+
+    window.addEventListener('mouseup', e => {
+      if (isDragging || isResizingLeft || isResizingRight) {
+        isDragging = false;
+        isResizingLeft = false;
+        isResizingRight = false;
+        clipDiv.classList.remove('dragging');
+        saveUndoState();
+      }
+    });
+
+    window.addEventListener('mousemove', e => {
+      if (isDragging) {
+        let deltaX = e.clientX - dragStartX;
+        let newLeft = dragStartLeft + deltaX;
+        newLeft = Math.max(newLeft, 0);
+        clipDiv.style.left = `${newLeft}px`;
+        updateClipStartTime(trackIndex, clipIndex, newLeft * secondsPerPixel());
+      } else if (isResizingLeft) {
+        let deltaX = e.clientX - resizeStartX;
+        let newLeft = resizeStartLeft + deltaX;
+        let newWidth = resizeStartWidth - deltaX;
+        if (newLeft < 0) {
+          newWidth += newLeft;
+          newLeft = 0;
+        }
+        if (newWidth >= CLIP_MIN_WIDTH) {
+          clipDiv.style.left = `${newLeft}px`;
+          clipDiv.style.width = `${newWidth}px`;
+          updateClipResize(trackIndex, clipIndex, newLeft * secondsPerPixel(), newWidth * secondsPerPixel());
+        }
+      } else if (isResizingRight) {
+        let deltaX = e.clientX - resizeStartX;
+        let newWidth = resizeStartWidth + deltaX;
+        if (newWidth >= CLIP_MIN_WIDTH) {
+          clipDiv.style.width = `${newWidth}px`;
+          updateClipResize(trackIndex, clipIndex, clipDiv.offsetLeft * secondsPerPixel(), newWidth * secondsPerPixel());
+        }
+      }
+    });
+
+    // Touch support
+    clipDiv.addEventListener('touchstart', e => {
+      const touch = e.touches[0];
+      if (e.target.classList.contains('resize-left')) {
+        isResizingLeft = true;
+        resizeStartX = touch.clientX;
+        resizeStartLeft = clipDiv.offsetLeft;
+        resizeStartWidth = clipDiv.offsetWidth;
+        e.preventDefault();
+      } else if (e.target.classList.contains('resize-right')) {
+        isResizingRight = true;
+        resizeStartX = touch.clientX;
+        resizeStartLeft = clipDiv.offsetLeft;
+        resizeStartWidth = clipDiv.offsetWidth;
+        e.preventDefault();
+      } else {
+        isDragging = true;
+        dragStartX = touch.clientX;
+        dragStartLeft = clipDiv.offsetLeft;
+        clipDiv.classList.add('dragging');
+        e.preventDefault();
+      }
+    });
+
+    window.addEventListener('touchend', e => {
+      if (isDragging || isResizingLeft || isResizingRight) {
+        isDragging = false;
+        isResizingLeft = false;
+        isResizingRight = false;
+        clipDiv.classList.remove('dragging');
+        saveUndoState();
+      }
+    });
+
+    window.addEventListener('touchmove', e => {
+      if (isDragging || isResizingLeft || isResizingRight) {
+        const touch = e.touches[0];
+        if (isDragging) {
+          let deltaX = touch.clientX - dragStartX;
+          let newLeft = dragStartLeft + deltaX;
+          newLeft = Math.max(newLeft, 0);
+          clipDiv.style.left = `${newLeft}px`;
+          updateClipStartTime(trackIndex, clipIndex, newLeft * secondsPerPixel());
+        } else if (isResizingLeft) {
+          let deltaX = touch.clientX - resizeStartX;
+          let newLeft = resizeStartLeft + deltaX;
+          let newWidth = resizeStartWidth - deltaX;
+          if (newLeft < 0) {
+            newWidth += newLeft;
+            newLeft = 0;
+          }
+          if (newWidth >= CLIP_MIN_WIDTH) {
+            clipDiv.style.left = `${newLeft}px`;
+            clipDiv.style.width = `${newWidth}px`;
+            updateClipResize(trackIndex, clipIndex, newLeft * secondsPerPixel(), newWidth * secondsPerPixel());
+          }
+        } else if (isResizingRight) {
+          let deltaX = touch.clientX - resizeStartX;
+          let newWidth = resizeStartWidth + deltaX;
+          if (newWidth >= CLIP_MIN_WIDTH) {
+            clipDiv.style.width = `${newWidth}px`;
+            updateClipResize(trackIndex, clipIndex, clipDiv.offsetLeft * secondsPerPixel(), newWidth * secondsPerPixel());
+          }
+        }
+        e.preventDefault();
+      }
+    });
+  }
+
+  // Update clip start time after drag
+  function updateClipStartTime(trackIndex, clipIndex, newStartTime) {
+    const track = tracks[trackIndex];
+    if (!track) return;
+    const clip = track.clips[clipIndex];
+    if (!clip) return;
+    clip.startTime = Math.max(0, newStartTime);
+    renderClips(track, trackIndex);
+  }
+
+  // Update clip duration after resize
+  function updateClipResize(trackIndex, clipIndex, newStartTime, newDuration) {
+    const track = tracks[trackIndex];
+    if (!track) return;
+    const clip = track.clips[clipIndex];
+    if (!clip) return;
+    clip.startTime = Math.max(0, newStartTime);
+    clip.duration = Math.max(0.1, newDuration);
+    renderClips(track, trackIndex);
+  }
+
+  // Render all tracks UI and clips
+  function renderTracks() {
+    timeline.innerHTML = '';
+    timeline.style.height = `${tracks.length * TRACK_HEIGHT}px`;
+    tracks.forEach((track, i) => {
+      createTrackUI(track, i);
+    });
+  }
+
+  // Add new empty track
+  function addTrack(name) {
+    const newTrack = new Track(name);
+    tracks.push(newTrack);
+    renderTracks();
+    selectTrack(tracks.length - 1);
+    saveUndoState();
+    btnExportMix.disabled = false;
+    btnExportStems.disabled = false;
+  }
+
+  // Select a track and update controls
+  function selectTrack(index) {
+    if (index < 0 || index >= tracks.length) return;
+    selectedTrackIndex = index;
+    const track = tracks[index];
+    volumeControl.value = track.volume;
+    panControl.value = track.pan;
+    muteControl.checked = track.mute;
+    soloControl.checked = track.solo;
+    effectsSelect.value = track.effects[0]?.type || 'none';
+    effectParam.value = track.effects[0]?.param ?? 0.5;
+    setStatus(`Selected: ${track.name}`);
+  }
+
+  // Update track properties from controls
+  function updateSelectedTrackProps() {
+    if (selectedTrackIndex < 0 || selectedTrackIndex >= tracks.length) return;
+    const track = tracks[selectedTrackIndex];
+    track.volume = parseFloat(volumeControl.value);
+    track.pan = parseFloat(panControl.value);
+    track.mute = muteControl.checked;
+    track.solo = soloControl.checked;
+
+    const effectType = effectsSelect.value;
+    if (effectType === 'none') {
+      track.effects = [];
+    } else {
+      const param = parseFloat(effectParam.value);
+      track.effects = [{ type: effectType, param }];
+    }
+
+    saveUndoState();
+  }
+
+  // Play all tracks mixed
+  async function playAll() {
+    if (isPlaying) return;
+    if (tracks.length === 0) {
+      alert("Add at least one track with clips to play.");
+      return;
+    }
+
+    if (audioCtx.state === 'suspended') {
+      await audioCtx.resume();
+    }
+
+    isPlaying = true;
+    btnPlay.disabled = true;
+    btnPause.disabled = false;
+    btnStop.disabled = false;
+    setStatus('Playing');
+
+    startTime = audioCtx.currentTime + 0.1;
+    scheduledEvents = [];
+
+    // Prepare tracks for playback
+    for (let i = 0; i < tracks.length; i++) {
+      const track = tracks[i];
+      if (track.mute) continue;
+      if (isAnySolo() && !track.solo) continue;
+
+      track.bufferSources = [];
+
+      // Create gain and pan nodes
+      const gainNode = audioCtx.createGain();
+      gainNode.gain.value = track.volume;
+
+      const panNode = audioCtx.createStereoPanner();
+      panNode.pan.value = track.pan;
+
+      // Create effects chain
+      let lastNode = gainNode;
+
+      if (track.effects.length > 0) {
+        lastNode.disconnect();
+        const effect = track.effects[0];
+        lastNode = createEffectNode(effect.type, effect.param, lastNode);
+      }
+
+      lastNode.connect(panNode);
+      panNode.connect(audioCtx.destination);
+
+      track.audioNodes = { gainNode, panNode, lastNode };
+
+      // Schedule clips
+      for (const clip of track.clips) {
+        const source = audioCtx.createBufferSource();
+        source.buffer = clip.buffer;
+
+        source.connect(lastNode);
+        source.start(startTime + clip.startTime, 0, clip.duration);
+        track.bufferSources.push(source);
+        scheduledEvents.push(source);
+      }
+    }
+
+    // Start metronome if enabled
+    if (metronomeToggle.checked) startMetronome();
+  }
+
+  // Pause playback (suspend context)
+  async function pauseAll() {
+    if (!isPlaying) return;
+    await audioCtx.suspend();
+    setStatus('Paused');
+    btnPlay.disabled = false;
+    btnPause.disabled = true;
+    btnStop.disabled = false;
+  }
+
+  // Stop playback
+  async function stopAll() {
+    if (!isPlaying) return;
+    // Stop all scheduled sources
+    for (const track of tracks) {
+      if (track.bufferSources) {
+        for (const source of track.bufferSources) {
+          try {
+            source.stop();
+          } catch {}
+        }
+      }
+    }
+    scheduledEvents = [];
+    isPlaying = false;
+    btnPlay.disabled = false;
+    btnPause.disabled = true;
+    btnStop.disabled = true;
+    stopMetronome();
+    setStatus('Stopped');
+  }
+
+  // Check if any track is soloed
+  function isAnySolo() {
+    return tracks.some(t => t.solo);
+  }
+
+  // Create effect nodes
+  function createEffectNode(type, param, inputNode) {
+    switch (type) {
+      case 'lowpass': {
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 500 + param * 5000;
+        inputNode.connect(filter);
+        return filter;
+      }
+      case 'highpass': {
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'highpass';
+        filter.frequency.value = 100 + param * 4000;
+        inputNode.connect(filter);
+        return filter;
+      }
+      case 'delay': {
+        const delay = audioCtx.createDelay();
+        delay.delayTime.value = param * 1.5;
+        inputNode.connect(delay);
+        return delay;
+      }
+      case 'reverb': {
+        // Simple reverb using convolver with impulse response generated on the fly
+        const convolver = audioCtx.createConvolver();
+        convolver.buffer = createReverbImpulseResponse(audioCtx, param);
+        inputNode.connect(convolver);
+        return convolver;
+      }
+      case 'compressor': {
+        const compressor = audioCtx.createDynamicsCompressor();
+        compressor.threshold.value = -24 + param * 24;
+        inputNode.connect(compressor);
+        return compressor;
+      }
+      case 'distortion': {
+        const distortion = audioCtx.createWaveShaper();
+        distortion.curve = makeDistortionCurve(param * 400);
+        distortion.oversample = '4x';
+        inputNode.connect(distortion);
+        return distortion;
+      }
+      case 'chorus': {
+        // Simple chorus effect using delay node modulated by oscillator
+        const delay = audioCtx.createDelay();
+        delay.delayTime.value = 0.03 * param;
+        const oscillator = audioCtx.createOscillator();
+        oscillator.type = 'sine';
+        oscillator.frequency.value = 0.8;
+        const gain = audioCtx.createGain();
+        gain.gain.value = 0.01;
+        oscillator.connect(gain);
+        gain.connect(delay.delayTime);
+        oscillator.start();
+        inputNode.connect(delay);
+        return delay;
+      }
+      default:
+        return inputNode;
+    }
+  }
+
+  // Create reverb impulse response
+  function createReverbImpulseResponse(context, decay) {
+    const length = context.sampleRate * decay * 3;
+    const impulse = context.createBuffer(2, length, context.sampleRate);
+    for (let channel = 0; channel < 2; channel++) {
+      const channelData = impulse.getChannelData(channel);
+      for (let i = 0; i < length; i++) {
+        channelData[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay * 2);
+      }
+    }
+    return impulse;
+  }
+
+  // Create distortion curve
+  function makeDistortionCurve(amount) {
+    const k = amount;
+    const n_samples = 44100;
+    const curve = new Float32Array(n_samples);
+    const deg = Math.PI / 180;
+    for (let i = 0; i < n_samples; ++i) {
+      const x = (i * 2) / n_samples - 1;
+      curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
+    }
+    return curve;
+  }
+
+  // Save undo state
+  function saveUndoState() {
+    const snapshot = JSON.stringify(tracks, (key, value) => {
+      if (key === 'buffer' && value instanceof AudioBuffer) {
+        return {
+          _isAudioBuffer: true,
+          length: value.length,
+          sampleRate: value.sampleRate,
+          numberOfChannels: value.numberOfChannels,
+          channelData: Array.from({length: value.numberOfChannels}, (_, ch) => value.getChannelData(ch)),
+        };
+      }
+      return value;
+    });
+    undoStack.splice(undoIndex + 1);
+    undoStack.push(snapshot);
+    undoIndex++;
+    // Limit undo stack size
+    if (undoStack.length > 50) undoStack.shift();
+  }
+
+  // Restore undo state
+  function undo() {
+    if (undoIndex <= 0) return;
+    undoIndex--;
+    restoreFromUndo();
+  }
+  function redo() {
+    if (undoIndex >= undoStack.length - 1) return;
+    undoIndex++;
+    restoreFromUndo();
+  }
+
+  // Restore tracks from undo stack
+  function restoreFromUndo() {
+    if (undoIndex < 0 || undoIndex >= undoStack.length) return;
+    const snapshot = undoStack[undoIndex];
+    const obj = JSON.parse(snapshot);
+    // Rehydrate AudioBuffers
+    tracks = obj.map(trackObj => {
+      const t = new Track(trackObj.name);
+      t.volume = trackObj.volume;
+      t.pan = trackObj.pan;
+      t.mute = trackObj.mute;
+      t.solo = trackObj.solo;
+      t.effects = trackObj.effects || [];
+      t.clips = trackObj.clips.map(c => {
+        if (c.buffer._isAudioBuffer) {
+          const buffer = audioCtx.createBuffer(
+            c.buffer.numberOfChannels,
+            c.buffer.length,
+            c.buffer.sampleRate
+          );
+          for (let ch = 0; ch < c.buffer.numberOfChannels; ch++) {
+            buffer.copyToChannel(new Float32Array(c.buffer.channelData[ch]), ch);
+          }
+          return new Clip(buffer, c.startTime, c.duration, c.name);
+        }
+        return new Clip(null, c.startTime, c.duration, c.name);
+      });
+      return t;
+    });
+    renderTracks();
+    selectTrack(0);
+    setStatus('Undo/Redo applied');
+  }
+
+  // Metronome
+  function startMetronome() {
+    stopMetronome();
+    const intervalMs = (60 / tempoInput.value) * 1000;
+    metronomeInterval = setInterval(() => {
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.frequency.value = 1000;
+      gain.gain.value = 0.2;
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.1);
+    }, intervalMs);
+  }
+  function stopMetronome() {
+    if (metronomeInterval) {
+      clearInterval(metronomeInterval);
+      metronomeInterval = null;
+    }
+  }
+
+  // File loading (drag/drop and file input)
+  fileLoader.addEventListener('change', async e => {
+    const files = Array.from(e.target.files);
+    for (const file of files) {
+      await loadAudioFile(file);
+    }
+    fileLoader.value = '';
+  });
+
+  function preventDefaults(e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  window.addEventListener('dragover', preventDefaults);
+  window.addEventListener('drop', preventDefaults);
+
+  window.addEventListener('drop', async e => {
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const files = Array.from(e.dataTransfer.files);
+      for (const file of files) {
+        await loadAudioFile(file);
+      }
+    }
+  });
+
+  // Load audio file into new track as clip
+  async function loadAudioFile(file) {
+    setStatus(`Loading ${file.name}...`);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      addTrack(file.name);
+      const track = tracks[tracks.length -1];
+      track.clips.push(new Clip(audioBuffer, 0, audioBuffer.duration, file.name));
+      renderTracks();
+      selectTrack(tracks.length - 1);
+      setStatus(`Loaded ${file.name}`);
+      btnExportMix.disabled = false;
+      btnExportStems.disabled = false;
+    } catch (e) {
+      setStatus(`Error loading ${file.name}: ${e.message}`);
+    }
+  }
+
+  // Mic recording
+  btnRecord.addEventListener('click', async () => {
+    if (btnRecord.dataset.recording === 'true') {
+      // Stop recording
+      btnRecord.dataset.recording = 'false';
+      btnRecord.textContent = '🎤 Record';
+      await stopRecording();
+      return;
+    }
+
+    // Start recording new track
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert('Your browser does not support microphone recording.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      startRecording(stream);
+    } catch (e) {
+      alert('Microphone access denied or error: ' + e.message);
+    }
+  });
+
+  async function startRecording(stream) {
+    btnRecord.dataset.recording = 'true';
+    btnRecord.textContent = '⏺️ Stop Recording';
+
+    const track = new Track('Recording ' + (tracks.length + 1));
+    tracks.push(track);
+    renderTracks();
+    selectTrack(tracks.length - 1);
+
+    track.stream = stream;
+    track.recordedChunks = [];
+
+    track.mediaRecorder = new MediaRecorder(stream);
+    track.mediaRecorder.ondataavailable = e => {
+      if (e.data.size > 0) {
+        track.recordedChunks.push(e.data);
+      }
+    };
+    track.mediaRecorder.onstop = async () => {
+      const blob = new Blob(track.recordedChunks, { type: 'audio/webm' });
+      const arrayBuffer = await blob.arrayBuffer();
+      try {
+        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+        track.clips.push(new Clip(audioBuffer, 0, audioBuffer.duration, 'Recording'));
+        renderTracks();
+        selectTrack(tracks.length - 1);
+        setStatus('Recording added to track.');
+        btnExportMix.disabled = false;
+        btnExportStems.disabled = false;
+      } catch {
+        setStatus('Failed to decode recorded audio.');
+      }
+      track.stream.getTracks().forEach(t => t.stop());
+      track.stream = null;
+      track.mediaRecorder = null;
+      track.recordedChunks = [];
+    };
+
+    track.mediaRecorder.start();
+  }
+
+  async function stopRecording() {
+    if (selectedTrackIndex < 0) return;
+    const track = tracks[selectedTrackIndex];
+    if (track && track.mediaRecorder && track.mediaRecorder.state === 'recording') {
+      track.mediaRecorder.stop();
+      btnRecord.dataset.recording = 'false';
+      btnRecord.textContent = '🎤 Record';
+    }
+  }
+
+  // Export mixed audio (WAV + MP3)
+  btnExportMix.addEventListener('click', async () => {
+    setStatus('Exporting mix...');
+    try {
+      const mixBuffer = await mixTracks();
+      await exportAudioBuffer(mixBuffer, 'phonk_mixer_mix');
+      setStatus('Export finished.');
+    } catch (e) {
+      setStatus('Export error: ' + e.message);
+    }
+  });
+
+  // Export stems (individual tracks)
+  btnExportStems.addEventListener('click', async () => {
+    setStatus('Exporting stems...');
+    try {
+      for (let i = 0; i < tracks.length; i++) {
+        const trackBuffer = await mixSingleTrack(tracks[i]);
+        await exportAudioBuffer(trackBuffer, `phonk_mixer_stem_${i + 1}_${tracks[i].name}`);
+      }
+      setStatus('Stems export finished.');
+    } catch (e) {
+      setStatus('Export error: ' + e.message);
+    }
+  });
+
+  // Mix all tracks into single AudioBuffer
+  async function mixTracks() {
+    if (tracks.length === 0) return null;
+
+    // Find max duration
+    const maxDuration = Math.max(...tracks.map(t => t.clips.length ? Math.max(...t.clips.map(c => c.startTime + c.duration)) : 0));
+
+    const sampleRate = audioCtx.sampleRate;
+    const outputBuffer = audioCtx.createBuffer(2, maxDuration * sampleRate, sampleRate);
+    const outputLeft = outputBuffer.getChannelData(0);
+    const outputRight = outputBuffer.getChannelData(1);
+
+    for (const track of tracks) {
+      if (track.mute) continue;
+      if (isAnySolo() && !track.solo) continue;
+
+      // Mix clips
+      for (const clip of track.clips) {
+        const clipBuffer = clip.buffer;
+        if (!clipBuffer) continue;
+        const startSample = Math.floor(clip.startTime * sampleRate);
+        const clipLength = Math.floor(clip.duration * sampleRate);
+        for (let ch = 0; ch < 2; ch++) {
+          const outputChannel = ch === 0 ? outputLeft : outputRight;
+          const clipChannelData = clipBuffer.getChannelData(ch < clipBuffer.numberOfChannels ? ch : 0);
+          for (let i = 0; i < clipLength && (startSample + i) < outputChannel.length; i++) {
+            outputChannel[startSample + i] += clipChannelData[i];
+          }
+        }
+      }
+    }
+
+    // Simple normalization
+    let maxAmp = 0;
+    for (let i = 0; i < outputLeft.length; i++) {
+      maxAmp = Math.max(maxAmp, Math.abs(outputLeft[i]), Math.abs(outputRight[i]));
+    }
+    if (maxAmp > 1) {
+      for (let i = 0; i < outputLeft.length; i++) {
+        outputLeft[i] /= maxAmp;
+        outputRight[i] /= maxAmp;
+      }
+    }
+
+    return outputBuffer;
+  }
+
+  // Mix a single track to AudioBuffer for stem export
+  async function mixSingleTrack(track) {
+    if (!track || track.clips.length === 0) return null;
+
+    const maxDuration = Math.max(...track.clips.map(c => c.startTime + c.duration));
+    const sampleRate = audioCtx.sampleRate;
+    const outputBuffer = audioCtx.createBuffer(2, maxDuration * sampleRate, sampleRate);
+    const outputLeft = outputBuffer.getChannelData(0);
+    const outputRight = outputBuffer.getChannelData(1);
+
+    for (const clip of track.clips) {
+      const clipBuffer = clip.buffer;
+      if (!clipBuffer) continue;
+      const startSample = Math.floor(clip.startTime * sampleRate);
+      const clipLength = Math.floor(clip.duration * sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const outputChannel = ch === 0 ? outputLeft : outputRight;
+        const clipChannelData = clipBuffer.getChannelData(ch < clipBuffer.numberOfChannels ? ch : 0);
+        for (let i = 0; i < clipLength && (startSample + i) < outputChannel.length; i++) {
+          outputChannel[startSample + i] += clipChannelData[i];
+        }
+      }
+    }
+
+    // Normalize
+    let maxAmp = 0;
+    for (let i = 0; i < outputLeft.length; i++) {
+      maxAmp = Math.max(maxAmp, Math.abs(outputLeft[i]), Math.abs(outputRight[i]));
+    }
+    if (maxAmp > 1) {
+      for (let i = 0; i < outputLeft.length; i++) {
+        outputLeft[i] /= maxAmp;
+        outputRight[i] /= maxAmp;
+      }
+    }
+
+    return outputBuffer;
+  }
+
+  // Export AudioBuffer to WAV and MP3 using ffmpeg.wasm
+  async function exportAudioBuffer(buffer, filenameBase) {
+    setStatus('Preparing audio data for export...');
+    // Encode to WAV raw PCM
+    const wavBlob = audioBufferToWavBlob(buffer);
+
+    // Load FFmpeg if needed
+    if (!ffmpeg.isLoaded()) {
+      setStatus('Loading encoder...');
+      await ffmpeg.load();
+    }
+
+    // Write WAV to FFmpeg FS
+    const wavArrayBuffer = await wavBlob.arrayBuffer();
+    ffmpeg.FS('writeFile', 'input.wav', new Uint8Array(wavArrayBuffer));
+
+    setStatus('Encoding MP3...');
+    await ffmpeg.run('-i', 'input.wav', '-codec:a', 'libmp3lame', '-qscale:a', '2', 'output.mp3');
+
+    const mp3Data = ffmpeg.FS('readFile', 'output.mp3');
+
+    // Create downloadable links
+    downloadBlob(wavBlob, filenameBase + '.wav');
+    downloadBlob(new Blob([mp3Data.buffer], { type: 'audio/mpeg' }), filenameBase + '.mp3');
+
+    // Clean FS
+    ffmpeg.FS('unlink', 'input.wav');
+    ffmpeg.FS('unlink', 'output.mp3');
+  }
+
+  // Convert AudioBuffer to WAV Blob
+  function audioBufferToWavBlob(buffer) {
+    const numOfChan = buffer.numberOfChannels,
+          length = buffer.length * numOfChan * 2 + 44,
+          bufferArray = new ArrayBuffer(length),
+          view = new DataView(bufferArray),
+          channels = [],
+          sampleRate = buffer.sampleRate;
+
+    let offset = 0;
+
+    function writeString(str) {
+      for (let i = 0; i < str.length; i++) {
+        view.setUint8(offset++, str.charCodeAt(i));
+      }
+    }
+
+    function write16bitPCM(output, offset, input) {
+      for (let i = 0; i < input.length; i++, offset += 2) {
+        let s = Math.max(-1, Math.min(1, input[i]));
+        s = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        output.setInt16(offset, s, true);
+      }
+    }
+
+    // Write WAV header
+    writeString('RIFF');
+    view.setUint32(offset, length - 8, true); offset += 4;
+    writeString('WAVE');
+    writeString('fmt ');
+    view.setUint32(offset, 16, true); offset += 4; // PCM chunk size
+    view.setUint16(offset, 1, true); offset += 2;  // PCM format
+    view.setUint16(offset, numOfChan, true); offset += 2;
+    view.setUint32(offset, sampleRate, true); offset += 4;
+    view.setUint32(offset, sampleRate * numOfChan * 2, true); offset += 4;
+    view.setUint16(offset, numOfChan * 2, true); offset += 2;
+    view.setUint16(offset, 16, true); offset += 2;
+    writeString('data');
+    view.setUint32(offset, length - 44, true); offset += 4;
+
+    // Write interleaved PCM data
+    for (let i = 0; i < numOfChan; i++) {
+      channels.push(buffer.getChannelData(i));
+    }
+
+    for (let i = 0; i < buffer.length; i++) {
+      for (let ch = 0; ch < numOfChan; ch++) {
+        let s = Math.max(-1, Math.min(1, channels[ch][i]));
+        s = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        view.setInt16(offset, s, true);
+        offset += 2;
+      }
+    }
+
+    return new Blob([bufferArray], { type: 'audio/wav' });
+  }
+
+  // Download helper
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
+  }
+
+  // Save/load project JSON
+  btnSaveProject.addEventListener('click', () => {
+    const projectJSON = JSON.stringify(tracks, (key, value) => {
+      if (key === 'buffer' && value instanceof AudioBuffer) {
+        return {
+          _isAudioBuffer: true,
+          length: value.length,
+          sampleRate: value.sampleRate,
+          numberOfChannels: value.numberOfChannels,
+          channelData: Array.from({length: value.numberOfChannels}, (_, ch) => value.getChannelData(ch)),
+        };
+      }
+      return value;
+    });
+
+    const blob = new Blob([projectJSON], { type: 'application/json' });
+    downloadBlob(blob, 'phonk_maker_project.json');
+    setStatus('Project saved.');
+  });
+
+  btnLoadProject.addEventListener('click', () => {
+    fileLoader.accept = 'application/json';
+    fileLoader.multiple = false;
+    fileLoader.click();
+  });
+
+  fileLoader.addEventListener('change', async e => {
+    if (!fileLoader.files.length) return;
+    const file = fileLoader.files[0];
+    if (file.type !== 'application/json') {
+      await loadAudioFile(file);
+      return;
+    }
+    const text = await file.text();
+    try {
+      const obj = JSON.parse(text);
+      tracks = obj.map(trackObj => {
+        const t = new Track(trackObj.name);
+        t.volume = trackObj.volume;
+        t.pan = trackObj.pan;
+        t.mute = trackObj.mute;
+        t.solo = trackObj.solo;
+        t.effects = trackObj.effects || [];
+        t.clips = trackObj.clips.map(c => {
+          if (c.buffer._isAudioBuffer) {
+            const buffer = audioCtx.createBuffer(
+              c.buffer.numberOfChannels,
+              c.buffer.length,
+              c.buffer.sampleRate
+            );
+            for (let ch = 0; ch < c.buffer.numberOfChannels; ch++) {
+              buffer.copyToChannel(new Float32Array(c.buffer.channelData[ch]), ch);
+            }
+            return new Clip(buffer, c.startTime, c.duration, c.name);
+          }
+          return new Clip(null, c.startTime, c.duration, c.name);
+        });
+        return t;
+      });
+      renderTracks();
+      selectTrack(0);
+      setStatus('Project loaded.');
+    } catch (ex) {
+      setStatus('Failed to load project: ' + ex.message);
+    }
+    fileLoader.value = '';
+  });
+
+  // Initialize UI state
+  function init() {
+    addTrack('Track 1');
+    selectTrack(0);
+  }
+
+  init();
+
+})();
+</script>
+</body>
+</html>

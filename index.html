@@ -1,176 +1,590 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Offline Audio Studio</title>
-  <meta name="theme-color" content="#000000"/>
-  <link rel="manifest" href="manifest.json">
-  <style>
-    body {
-      background: #111;
-      color: #eee;
-      font-family: sans-serif;
-      padding: 20px;
-      margin: 0;
-    }
-    h1 {
-      text-align: center;
-      color: #0f0;
-    }
-    .controls, .tools {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 10px;
-      margin-top: 20px;
-    }
-    button, select, input[type=file] {
-      padding: 10px;
-      font-size: 14px;
-      border: none;
-      border-radius: 5px;
-    }
-    textarea {
-      width: 100%;
-      height: 100px;
-      margin-top: 20px;
-      background: #222;
-      color: #fff;
-      border: 1px solid #444;
-      padding: 10px;
-      font-family: monospace;
-    }
-    #waveform {
-      margin-top: 20px;
-      background: #222;
-      height: 128px;
-    }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Phonk Maker with Note Editor</title>
+<style>
+  body {
+    background: #121212;
+    color: #eee;
+    font-family: monospace, monospace;
+    margin: 0; padding: 10px;
+  }
+  h1 { text-align: center; }
+  #trackList {
+    margin-bottom: 10px;
+  }
+  .track {
+    border: 1px solid #444;
+    margin-bottom: 8px;
+    padding: 8px;
+    background: #222;
+  }
+  button, input, select {
+    margin: 4px;
+  }
+  #noteCanvas {
+    background: #111;
+    border: 1px solid #333;
+    display: block;
+    margin: 10px auto;
+  }
+  #log {
+    height: 120px;
+    overflow-y: auto;
+    border: 1px solid #333;
+    padding: 6px;
+    background: #181818;
+    font-size: 12px;
+  }
+</style>
 </head>
 <body>
-  <h1>🎛 Offline Audio Studio</h1>
-  <div class="controls">
-    <input type="file" id="fileInput" accept=".mp3,.wav" />
-    <button onclick="play()">▶ Play</button>
-    <button onclick="pause()">⏸ Pause</button>
-    <button onclick="exportFile()">💾 Export</button>
-    <button onclick="startTranscription()">🗣 Transcribe</button>
-    <button onclick="startTranslation()">🌐 Translate</button>
-  </div>
-  <div id="waveform"></div>
-  <div class="tools">
-    <select id="effects">
-      <option value="none">No Effect</option>
-      <option value="reverb">Reverb</option>
-      <option value="echo">Echo</option>
-      <option value="lowpass">Low Pass</option>
+
+<h1>Phonk Maker with Note Editor</h1>
+
+<div id="trackList"></div>
+<button id="addTrackBtn">Add Track (Import MP3/WAV)</button>
+<button id="recordTrackBtn">Record Track (Mic)</button>
+
+<div>
+  <button id="playAllBtn">Play All</button>
+  <button id="pauseAllBtn">Pause All</button>
+  <button id="stopAllBtn">Stop All</button>
+</div>
+
+<h2>Note Editor (Piano Roll)</h2>
+<canvas id="noteCanvas" width="900" height="150"></canvas>
+<div>
+  <label>Octave:
+    <select id="octaveSelect">
+      <option>3</option><option>4</option><option selected>5</option>
     </select>
-    <button onclick="applyEffect()">🎚 Apply Effect</button>
-  </div>
-  <textarea id="logOutput" placeholder="Status log..."></textarea>
+  </label>
+  <label>Note Length:
+    <select id="noteLength">
+      <option value="0.25">1/4</option>
+      <option value="0.5">1/2</option>
+      <option value="1" selected>1</option>
+      <option value="2">2</option>
+    </select>
+  </label>
+  <button id="addNoteBtn">Add Note</button>
+  <button id="deleteNoteBtn">Delete Note</button>
+  <button id="clearNotesBtn">Clear Notes</button>
+</div>
 
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js').then(() => {
-        console.log('PWA ready');
-      });
+<h2>Export</h2>
+<button id="exportWavBtn">Export WAV</button>
+<button id="exportMp3Btn">Export MP3 (Limited)</button>
+
+<h2>Logs</h2>
+<div id="log"></div>
+
+<script>
+// === Basic logging function ===
+function log(msg) {
+  const logDiv = document.getElementById('log');
+  logDiv.textContent += msg + '\n';
+  logDiv.scrollTop = logDiv.scrollHeight;
+}
+
+// === Audio Context Setup ===
+const AudioContext = window.AudioContext || window.webkitAudioContext;
+const audioCtx = new AudioContext();
+
+let tracks = [];
+let isPlaying = false;
+
+// === Track Handling ===
+function createTrack(audioBuffer) {
+  return {
+    buffer: audioBuffer,
+    source: null,
+    gainNode: audioCtx.createGain(),
+    panNode: audioCtx.createStereoPanner(),
+    effects: {
+      echo: false,
+      reverb: false,
+    },
+    settings: {
+      gain: 1,
+      pan: 0,
+    },
+    isPlaying: false,
+  };
+}
+
+// Load file helper
+function loadAudioFile(file) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    audioCtx.decodeAudioData(e.target.result).then(buffer => {
+      const track = createTrack(buffer);
+      tracks.push(track);
+      renderTracks();
+      log('Loaded track: ' + file.name);
+    }).catch(err => log('Decode error: ' + err));
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// Render track controls
+function renderTracks() {
+  const list = document.getElementById('trackList');
+  list.innerHTML = '';
+  tracks.forEach((track, idx) => {
+    const div = document.createElement('div');
+    div.className = 'track';
+    div.innerHTML = `
+      <strong>Track ${idx+1}</strong><br>
+      <button data-idx="${idx}" class="playTrackBtn">Play</button>
+      <button data-idx="${idx}" class="pauseTrackBtn">Pause</button>
+      <button data-idx="${idx}" class="stopTrackBtn">Stop</button><br>
+      Gain: <input type="range" min="0" max="2" step="0.01" data-idx="${idx}" class="gainSlider" value="${track.settings.gain}"><br>
+      Pan: <input type="range" min="-1" max="1" step="0.01" data-idx="${idx}" class="panSlider" value="${track.settings.pan}"><br>
+      Echo: <input type="checkbox" data-idx="${idx}" class="echoToggle" ${track.effects.echo ? 'checked' : ''}><br>
+      Reverb: <input type="checkbox" data-idx="${idx}" class="reverbToggle" ${track.effects.reverb ? 'checked' : ''}><br>
+      <button data-idx="${idx}" class="removeTrackBtn">Remove</button>
+    `;
+    list.appendChild(div);
+  });
+  attachTrackEventListeners();
+}
+
+// Track control event handlers
+function attachTrackEventListeners() {
+  document.querySelectorAll('.playTrackBtn').forEach(btn =>
+    btn.onclick = () => playTrack(parseInt(btn.dataset.idx))
+  );
+  document.querySelectorAll('.pauseTrackBtn').forEach(btn =>
+    btn.onclick = () => pauseTrack(parseInt(btn.dataset.idx))
+  );
+  document.querySelectorAll('.stopTrackBtn').forEach(btn =>
+    btn.onclick = () => stopTrack(parseInt(btn.dataset.idx))
+  );
+  document.querySelectorAll('.gainSlider').forEach(slider =>
+    slider.oninput = e => {
+      const idx = parseInt(e.target.dataset.idx);
+      tracks[idx].settings.gain = parseFloat(e.target.value);
+      if (tracks[idx].gainNode) tracks[idx].gainNode.gain.value = tracks[idx].settings.gain;
     }
+  );
+  document.querySelectorAll('.panSlider').forEach(slider =>
+    slider.oninput = e => {
+      const idx = parseInt(e.target.dataset.idx);
+      tracks[idx].settings.pan = parseFloat(e.target.value);
+      if (tracks[idx].panNode) tracks[idx].panNode.pan.value = tracks[idx].settings.pan;
+    }
+  );
+  document.querySelectorAll('.echoToggle').forEach(chk =>
+    chk.onchange = e => {
+      const idx = parseInt(e.target.dataset.idx);
+      tracks[idx].effects.echo = e.target.checked;
+      log(`Track ${idx+1} Echo ${e.target.checked ? 'enabled' : 'disabled'}`);
+    }
+  );
+  document.querySelectorAll('.reverbToggle').forEach(chk =>
+    chk.onchange = e => {
+      const idx = parseInt(e.target.dataset.idx);
+      tracks[idx].effects.reverb = e.target.checked;
+      log(`Track ${idx+1} Reverb ${e.target.checked ? 'enabled' : 'disabled'}`);
+    }
+  );
+  document.querySelectorAll('.removeTrackBtn').forEach(btn =>
+    btn.onclick = e => {
+      const idx = parseInt(e.target.dataset.idx);
+      tracks.splice(idx, 1);
+      renderTracks();
+      log(`Removed track ${idx+1}`);
+    }
+  );
+}
 
-    let wavesurfer;
-    let recognition;
-    let synth = window.speechSynthesis;
+// Play, Pause, Stop for tracks
+function playTrack(idx) {
+  if (!tracks[idx]) return;
+  if (tracks[idx].isPlaying) return;
+  const source = audioCtx.createBufferSource();
+  source.buffer = tracks[idx].buffer;
+  // Effects chain
+  let nodeChain = source;
 
-    window.onload = () => {
-      wavesurfer = WaveSurfer.create({
-        container: '#waveform',
-        waveColor: '#555',
-        progressColor: '#0f0',
-        height: 128
-      });
+  // Echo effect (simple delay)
+  if (tracks[idx].effects.echo) {
+    const delay = audioCtx.createDelay();
+    delay.delayTime.value = 0.3;
+    const feedback = audioCtx.createGain();
+    feedback.gain.value = 0.4;
+    delay.connect(feedback);
+    feedback.connect(delay);
+    nodeChain.connect(delay);
+    nodeChain = delay;
+  }
 
-      document.getElementById("fileInput").addEventListener("change", e => {
-        const file = e.target.files[0];
-        if (file) {
-          const url = URL.createObjectURL(file);
-          wavesurfer.load(url);
-          log("Loaded audio file.");
-        }
-      });
+  // Reverb effect (convolution with impulse)
+  if (tracks[idx].effects.reverb) {
+    const convolver = audioCtx.createConvolver();
+    convolver.buffer = createReverbImpulse(audioCtx, 2.5);
+    nodeChain.connect(convolver);
+    nodeChain = convolver;
+  }
 
-      if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.lang = 'en-US';
-        recognition.onresult = (event) => {
-          const transcript = Array.from(event.results).map(r => r[0].transcript).join(' ');
-          log("Transcription: " + transcript);
+  nodeChain.connect(tracks[idx].gainNode);
+  tracks[idx].gainNode.connect(tracks[idx].panNode);
+  tracks[idx].panNode.connect(audioCtx.destination);
+
+  tracks[idx].gainNode.gain.value = tracks[idx].settings.gain;
+  tracks[idx].panNode.pan.value = tracks[idx].settings.pan;
+
+  source.start(0);
+  tracks[idx].source = source;
+  tracks[idx].isPlaying = true;
+
+  source.onended = () => {
+    tracks[idx].isPlaying = false;
+    log(`Track ${idx+1} ended`);
+  };
+
+  log(`Playing track ${idx+1}`);
+}
+
+function pauseTrack(idx) {
+  // No native pause for BufferSourceNode - stop and remember position needed (not implemented here)
+  stopTrack(idx);
+  log(`Paused track ${idx+1}`);
+}
+
+function stopTrack(idx) {
+  if (!tracks[idx] || !tracks[idx].isPlaying) return;
+  if (tracks[idx].source) {
+    tracks[idx].source.stop(0);
+    tracks[idx].isPlaying = false;
+    log(`Stopped track ${idx+1}`);
+  }
+}
+
+// Play/pause/stop all
+document.getElementById('playAllBtn').onclick = () => {
+  tracks.forEach((_, i) => playTrack(i));
+  isPlaying = true;
+};
+document.getElementById('pauseAllBtn').onclick = () => {
+  tracks.forEach((_, i) => pauseTrack(i));
+  isPlaying = false;
+};
+document.getElementById('stopAllBtn').onclick = () => {
+  tracks.forEach((_, i) => stopTrack(i));
+  isPlaying = false;
+};
+
+// Add track (file input)
+document.getElementById('addTrackBtn').onclick = () => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'audio/mp3,audio/wav,audio/mpeg';
+  input.onchange = () => {
+    if (input.files.length > 0) {
+      loadAudioFile(input.files[0]);
+    }
+  };
+  input.click();
+};
+
+// === Microphone recording ===
+let recorder;
+let recordedChunks = [];
+document.getElementById('recordTrackBtn').onclick = async () => {
+  if (!recorder || recorder.state === 'inactive') {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      log('MediaDevices API not supported.');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recorder = new MediaRecorder(stream);
+      recordedChunks = [];
+      recorder.ondataavailable = e => {
+        if (e.data.size > 0) recordedChunks.push(e.data);
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: 'audio/webm' });
+        const fileReader = new FileReader();
+        fileReader.onload = function() {
+          audioCtx.decodeAudioData(this.result).then(buffer => {
+            const track = createTrack(buffer);
+            tracks.push(track);
+            renderTracks();
+            log('Recorded track added');
+          });
         };
-        recognition.onerror = err => log("Transcription error: " + err.error);
-      } else {
-        log("SpeechRecognition not supported.");
-      }
-    };
-
-    function play() {
-      wavesurfer.play();
+        fileReader.readAsArrayBuffer(blob);
+      };
+      recorder.start();
+      log('Recording started...');
+      document.getElementById('recordTrackBtn').textContent = 'Stop Recording';
+    } catch(e) {
+      log('Error getting microphone: ' + e);
     }
+  } else if (recorder.state === 'recording') {
+    recorder.stop();
+    log('Recording stopped');
+    document.getElementById('recordTrackBtn').textContent = 'Record Track (Mic)';
+  }
+};
 
-    function pause() {
-      wavesurfer.pause();
+// === Export WAV ===
+function floatTo16BitPCM(float32Array) {
+  const output = new Int16Array(float32Array.length);
+  for(let i=0; i < float32Array.length; i++) {
+    let s = Math.max(-1, Math.min(1, float32Array[i]));
+    output[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  }
+  return output;
+}
+
+function bufferToWav(abuffer) {
+  const numOfChan = abuffer.numberOfChannels,
+        length = abuffer.length * numOfChan * 2 + 44,
+        buffer = new ArrayBuffer(length),
+        view = new DataView(buffer),
+        channels = [],
+        sampleRate = abuffer.sampleRate,
+        offset = 0,
+        pos = 0;
+
+  function setUint16(data) { view.setUint16(pos, data, true); pos += 2; }
+  function setUint32(data) { view.setUint32(pos, data, true); pos += 4; }
+
+  function writeString(s) {
+    for(let i=0; i < s.length; i++) view.setUint8(pos++, s.charCodeAt(i));
+  }
+
+  // Write WAV header
+  writeString('RIFF'); setUint32(length - 8); writeString('WAVE'); writeString('fmt ');
+  setUint32(16); setUint16(1); setUint16(numOfChan); setUint32(sampleRate);
+  setUint32(sampleRate * 2 * numOfChan); setUint16(numOfChan * 2); setUint16(16);
+  writeString('data'); setUint32(length - pos - 4);
+
+  // Write interleaved data
+  for(let i=0; i < numOfChan; i++) channels.push(abuffer.getChannelData(i));
+  while(offset < abuffer.length) {
+    for(let i=0; i < numOfChan; i++) {
+      const sample = Math.max(-1, Math.min(1, channels[i][offset]));
+      view.setInt16(pos, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+      pos += 2;
     }
+    offset++;
+  }
+  return new Blob([buffer], { type: 'audio/wav' });
+}
 
-    function applyEffect() {
-      const effect = document.getElementById("effects").value;
-      log("Applied effect: " + effect + " (simulated)");
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById('exportWavBtn').onclick = () => {
+  if (tracks.length === 0) {
+    log('No tracks to export');
+    return;
+  }
+  // Simple mixdown
+  const length = Math.max(...tracks.map(t => t.buffer.length));
+  const sampleRate = audioCtx.sampleRate;
+  const offlineCtx = new OfflineAudioContext(2, length, sampleRate);
+  
+  tracks.forEach(track => {
+    const source = offlineCtx.createBufferSource();
+    source.buffer = track.buffer;
+    source.connect(offlineCtx.destination);
+    source.start(0);
+  });
+
+  offlineCtx.startRendering().then(renderedBuffer => {
+    const wavBlob = bufferToWav(renderedBuffer);
+    downloadBlob(wavBlob, 'phonk-export.wav');
+    log('Exported WAV');
+  }).catch(err => log('Export error: ' + err));
+};
+
+// === MP3 Export (very limited) ===
+// We can only export raw PCM WAV easily here.
+// Full MP3 encoding requires large libs not feasible offline on iPhone without APIs.
+
+// === Piano Roll Note Editor ===
+const noteCanvas = document.getElementById('noteCanvas');
+const ctx = noteCanvas.getContext('2d');
+const notes = [];
+let selectedNote = null;
+let draggingNote = false;
+let dragOffset = {x:0, y:0};
+
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const canvasWidth = 900;
+const canvasHeight = 150;
+noteCanvas.width = canvasWidth;
+noteCanvas.height = canvasHeight;
+
+const timeScale = 100; // px per second
+const pitchHeight = 12; // px per note
+const basePitch = 60; // MIDI note number for C4
+
+function drawPianoRoll() {
+  ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+  for(let i=0; i < 12; i++) {
+    const y = canvasHeight - (i+1)*pitchHeight;
+    ctx.fillStyle = (i % 2 === 0) ? '#333' : '#222';
+    ctx.fillRect(0, y, canvasWidth, pitchHeight);
+    ctx.fillStyle = '#aaa';
+    ctx.font = '10px monospace';
+    ctx.fillText(NOTE_NAMES[i], 2, y + pitchHeight - 2);
+  }
+
+  for(let i=0; i < notes.length; i++) {
+    const n = notes[i];
+    const x = n.time * timeScale;
+    const y = canvasHeight - (n.pitch - basePitch + 1) * pitchHeight;
+    const w = n.duration * timeScale;
+    const h = pitchHeight - 2;
+    ctx.fillStyle = (n === selectedNote) ? '#0ff' : '#0a8';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#005';
+    ctx.strokeRect(x, y, w, h);
+  }
+}
+
+function addNote() {
+  const octave = parseInt(document.getElementById('octaveSelect').value);
+  const noteLength = parseFloat(document.getElementById('noteLength').value);
+  const pitch = 12 * (octave + 1);
+  const time = 0;
+  const duration = noteLength;
+  notes.push({time, pitch, duration});
+  drawPianoRoll();
+  log('Note added');
+}
+
+function deleteNote() {
+  if (!selectedNote) return;
+  const idx = notes.indexOf(selectedNote);
+  if (idx >= 0) notes.splice(idx, 1);
+  selectedNote = null;
+  drawPianoRoll();
+  log('Note deleted');
+}
+
+function clearNotes() {
+  notes.length = 0;
+  selectedNote = null;
+  drawPianoRoll();
+  log('All notes cleared');
+}
+
+noteCanvas.addEventListener('mousedown', e => {
+  const rect = noteCanvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  selectedNote = null;
+  for(let n of notes) {
+    const nx = n.time * timeScale;
+    const ny = canvasHeight - (n.pitch - basePitch + 1)*pitchHeight;
+    const nw = n.duration * timeScale;
+    const nh = pitchHeight - 2;
+    if(x >= nx && x <= nx+nw && y >= ny && y <= ny+nh) {
+      selectedNote = n;
+      draggingNote = true;
+      dragOffset.x = x - nx;
+      dragOffset.y = y - ny;
+      break;
     }
+  }
+  drawPianoRoll();
+});
 
-    function exportFile() {
-      log("Export triggered (requires additional logic for real audio editing).");
+noteCanvas.addEventListener('mousemove', e => {
+  if (!draggingNote || !selectedNote) return;
+  const rect = noteCanvas.getBoundingClientRect();
+  const x = e.clientX - rect.left - dragOffset.x;
+  const y = e.clientY - rect.top - dragOffset.y;
+  // Snap time and pitch
+  selectedNote.time = Math.max(0, x / timeScale);
+  let pitchIndex = Math.floor((canvasHeight - y) / pitchHeight) + basePitch - 1;
+  pitchIndex = Math.min(127, Math.max(0, pitchIndex));
+  selectedNote.pitch = pitchIndex;
+  drawPianoRoll();
+});
+
+noteCanvas.addEventListener('mouseup', () => {
+  draggingNote = false;
+});
+
+document.getElementById('addNoteBtn').onclick = addNote;
+document.getElementById('deleteNoteBtn').onclick = deleteNote;
+document.getElementById('clearNotesBtn').onclick = clearNotes;
+
+// === Voice Transcription (Speech to Text) ===
+if ('webkitSpeechRecognition' in window) {
+  const recognition = new webkitSpeechRecognition();
+  recognition.lang = 'en-US';
+  recognition.continuous = false;
+  recognition.interimResults = false;
+
+  recognition.onstart = () => log('Voice recognition started...');
+  recognition.onerror = e => log('Recognition error: ' + e.error);
+  recognition.onend = () => log('Voice recognition ended');
+  recognition.onresult = e => {
+    const transcript = e.results[0][0].transcript;
+    log('Recognized: ' + transcript);
+  };
+
+  // Example: start recognition on a button press or automatically if you add UI for it
+} else {
+  log('Speech Recognition API not supported');
+}
+
+// === Web MIDI API (Desktop only) ===
+if (navigator.requestMIDIAccess) {
+  navigator.requestMIDIAccess().then(midiAccess => {
+    log('MIDI Access granted');
+    for (let input of midiAccess.inputs.values()) {
+      input.onmidimessage = event => {
+        const [status, note, velocity] = event.data;
+        if ((status & 0xf0) === 0x90 && velocity > 0) {
+          log(`MIDI Note On: ${note} Velocity: ${velocity}`);
+          // Could add code to play sine tone for note here
+        } else if ((status & 0xf0) === 0x80 || velocity === 0) {
+          log(`MIDI Note Off: ${note}`);
+        }
+      };
     }
+  }).catch(err => log('MIDI Access error: ' + err));
+} else {
+  log('Web MIDI API not supported');
+}
 
-    function startTranscription() {
-      if (recognition) {
-        recognition.start();
-        log("Voice transcription started...");
-      } else {
-        log("SpeechRecognition API not supported on this browser.");
-      }
+// === Helper: Create Reverb Impulse Response ===
+function createReverbImpulse(context, duration = 2.0) {
+  const sampleRate = context.sampleRate;
+  const length = sampleRate * duration;
+  const impulse = context.createBuffer(2, length, sampleRate);
+  for (let channel = 0; channel < 2; channel++) {
+    const channelData = impulse.getChannelData(channel);
+    for (let i = 0; i < length; i++) {
+      channelData[i] = (Math.random() * 2 - 1) * (1 - i / length);
     }
+  }
+  return impulse;
+}
 
-    function startTranslation() {
-      let phrase = prompt("Enter text to translate:");
-      if (!phrase) return;
-      const utterance = new SpeechSynthesisUtterance(phrase);
-      utterance.lang = "es-ES"; // Translate to Spanish
-      synth.speak(utterance);
-      log("Voice translation spoken aloud.");
-    }
+// Initial render of tracks list
+renderTracks();
+drawPianoRoll();
 
-    function log(msg) {
-      const logOutput = document.getElementById("logOutput");
-      logOutput.value += msg + "\n";
-      logOutput.scrollTop = logOutput.scrollHeight;
-    }
-  </script>
-
-  <script src="https://unpkg.com/wavesurfer.js"></script>
-
-  <script>
-    const swBlob = new Blob([\`
-      self.addEventListener('install', event => {
-        event.waitUntil(
-          caches.open('audio-studio-v1').then(cache => cache.addAll(['./']))
-        );
-        self.skipWaiting();
-      });
-      self.addEventListener('fetch', event => {
-        event.respondWith(caches.match(event.request).then(res => res || fetch(event.request)));
-      });
-    \`], { type: 'application/javascript' });
-    const swUrl = URL.createObjectURL(swBlob);
-    navigator.serviceWorker.register(swUrl);
-  </script>
+</script>
 </body>
 </html>

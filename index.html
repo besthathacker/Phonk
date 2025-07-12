@@ -3,588 +3,1066 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Phonk Maker with Note Editor</title>
+<title>Phonk Pro Ultimate Editor with Clip Resize & Automation</title>
 <style>
   body {
-    background: #121212;
+    margin: 0; background: #121212; color: #eee; font-family: monospace, monospace;
+  }
+  header {
+    padding: 16px; text-align:center; font-size:1.8rem; background:#1f1f1f; color:#f05454;
+  }
+  main {
+    max-width: 1200px; margin: 16px auto; padding: 12px; background:#222; border-radius: 12px;
+  }
+  section {
+    margin-bottom: 20px;
+  }
+  .track-row {
+    border: 1px solid #444; border-radius: 8px; margin-bottom: 12px; padding: 8px;
+    display: flex; align-items: center; gap: 8px; background: #181818;
+  }
+  button, input[type=range], select {
+    background: #2a2a2a; border:none; color:#eee; border-radius:6px; padding:6px 10px;
+    cursor:pointer; font-family: monospace; font-size: 1rem;
+  }
+  button:hover, input[type=range]:hover, select:hover { background: #f05454; color:#111; }
+  #timeline {
+    border: 2px solid #f05454; border-radius: 8px; height: 260px; background: #111;
+    margin: 12px 0; position: relative; overflow-x: scroll; user-select:none;
+  }
+  .clip {
+    position: absolute;
+    background: #f05454cc;
+    border-radius: 6px;
+    height: 60px;
+    cursor: grab;
+    box-sizing: border-box;
+    border: 1px solid #a03030;
+    user-select:none;
+    display: flex;
+    align-items: center;
+    padding-left: 6px;
     color: #eee;
-    font-family: monospace, monospace;
-    margin: 0; padding: 10px;
+    font-size: 12px;
   }
-  h1 { text-align: center; }
-  #trackList {
-    margin-bottom: 10px;
+  .clip.selected {
+    border-color: #fff;
+    box-shadow: 0 0 8px #f05454;
   }
-  .track {
-    border: 1px solid #444;
-    margin-bottom: 8px;
-    padding: 8px;
-    background: #222;
+  .resize-handle {
+    width: 8px;
+    height: 100%;
+    background: #fff3;
+    cursor: ew-resize;
+    position: absolute;
+    top: 0;
+    right: 0;
+    border-radius: 0 6px 6px 0;
   }
-  button, input, select {
-    margin: 4px;
-  }
-  #noteCanvas {
+  #noteEditorCanvas {
+    border: 2px solid #f05454;
+    border-radius: 8px;
     background: #111;
-    border: 1px solid #333;
     display: block;
-    margin: 10px auto;
+    margin-top: 8px;
+    width: 100%;
+    height: 180px;
+  }
+  .controls-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+  .control-group {
+    display: flex;
+    flex-direction: column;
+    font-size: 0.9rem;
+  }
+  #stepSequencer {
+    margin-top: 12px;
+    display: flex;
+    gap: 4px;
+  }
+  .step {
+    width: 24px;
+    height: 24px;
+    background: #2a2a2a;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .step.active {
+    background: #f05454;
   }
   #log {
     height: 120px;
     overflow-y: auto;
-    border: 1px solid #333;
-    padding: 6px;
-    background: #181818;
-    font-size: 12px;
+    background: #111;
+    border-radius: 8px;
+    padding: 8px;
+    font-size: 0.85rem;
+  }
+  /* Automation curves overlay */
+  .automation-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
   }
 </style>
 </head>
 <body>
 
-<h1>Phonk Maker with Note Editor</h1>
+<header>PHONK PRO ULTIMATE EDITOR w/ Clip Resize & Automation</header>
+<main>
 
-<div id="trackList"></div>
-<button id="addTrackBtn">Add Track (Import MP3/WAV)</button>
-<button id="recordTrackBtn">Record Track (Mic)</button>
+<section>
+  <h2>Import / Record Audio</h2>
+  <button id="importAudioBtn">Import MP3 / WAV</button>
+  <input type="file" id="fileInput" accept=".mp3,.wav" multiple style="display:none"/>
+  <button id="recordMicBtn">Start/Stop Mic Recording</button>
+  <div id="recordingStatus" style="margin-top:8px; color:#f05454;"></div>
+</section>
 
-<div>
+<section>
+  <h2>Tracks</h2>
+  <div id="trackContainer"></div>
+</section>
+
+<section style="position:relative;">
+  <h2>Timeline & Clips (Drag clips, Resize with right handle)</h2>
+  <div id="timeline"></div>
+  <canvas id="automationCanvas" class="automation-canvas"></canvas>
+</section>
+
+<section>
+  <h2>Automation Controls</h2>
+  <label>Automation Parameter:
+    <select id="automationParamSelect">
+      <option value="volume">Volume</option>
+      <option value="pan">Pan</option>
+      <option value="delayFeedback">Delay Feedback</option>
+    </select>
+  </label>
+  <p style="font-size:0.85rem; color:#bbb;">
+    Click on automation curve area to add/move points. Drag points to edit.<br/>
+    Automation applies in playback and export.
+  </p>
+</section>
+
+<section>
+  <h2>Note Editor</h2>
+  <div class="controls-row">
+    <div class="control-group">
+      <label for="octaveSelect">Octave</label>
+      <select id="octaveSelect">
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4" selected>4</option>
+        <option value="5">5</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label for="noteLength">Note Length (sec)</label>
+      <input type="number" id="noteLength" min="0.1" max="5" step="0.1" value="0.5">
+    </div>
+    <button id="addNoteBtn">Add Note</button>
+    <button id="deleteNoteBtn">Delete Selected Note</button>
+    <button id="clearNotesBtn">Clear All Notes</button>
+  </div>
+  <canvas id="noteEditorCanvas" width="1000" height="180"></canvas>
+</section>
+
+<section>
+  <h2>Step Sequencer (16 Steps)</h2>
+  <label>Tempo:
+    <input type="number" id="tempoInput" min="40" max="240" value="90" style="width: 60px;">
+  </label>
+  <div id="stepSequencer"></div>
+</section>
+
+<section>
+  <h2>808 Bass Synth</h2>
+  <label>Frequency (Hz): <input type="number" id="bassFreq" min="20" max="2000" value="100" style="width: 80px;"></label>
+  <label>Decay (ms): <input type="number" id="bassDecay" min="10" max="2000" value="200" style="width: 80px;"></label>
+  <button id="playBassBtn">Play Bass Note</button>
+</section>
+
+<section>
+  <h2>Phonk Effects</h2>
+  <label><input type="checkbox" id="vinylCrackleToggle"> Vinyl Crackle</label>
+  <label><input type="checkbox" id="pitchShiftToggle"> Pitch Shift</label>
+  <input type="range" id="pitchShiftRange" min="-12" max="12" step="1" value="0" disabled>
+  <label><input type="checkbox" id="sampleChopToggle"> Sample Chop</label>
+  <label><input type="checkbox" id="delayToggle"> Delay</label>
+  <input type="range" id="delayFeedbackRange" min="0" max="0.95" step="0.01" value="0.5" disabled>
+  <label><input type="checkbox" id="reverbToggle"> Reverb</label>
+  <input type="range" id="reverbMixRange" min="0" max="1" step="0.01" value="0.3" disabled>
+</section>
+
+<section>
+  <h2>Transport Controls</h2>
   <button id="playAllBtn">Play All</button>
   <button id="pauseAllBtn">Pause All</button>
   <button id="stopAllBtn">Stop All</button>
-</div>
+</section>
 
-<h2>Note Editor (Piano Roll)</h2>
-<canvas id="noteCanvas" width="900" height="150"></canvas>
-<div>
-  <label>Octave:
-    <select id="octaveSelect">
-      <option>3</option><option>4</option><option selected>5</option>
-    </select>
-  </label>
-  <label>Note Length:
-    <select id="noteLength">
-      <option value="0.25">1/4</option>
-      <option value="0.5">1/2</option>
-      <option value="1" selected>1</option>
-      <option value="2">2</option>
-    </select>
-  </label>
-  <button id="addNoteBtn">Add Note</button>
-  <button id="deleteNoteBtn">Delete Note</button>
-  <button id="clearNotesBtn">Clear Notes</button>
-</div>
+<section>
+  <h2>Export</h2>
+  <button id="exportBtn">Export Full Mix WAV</button>
+</section>
 
-<h2>Export</h2>
-<button id="exportWavBtn">Export WAV</button>
-<button id="exportMp3Btn">Export MP3 (Limited)</button>
+<section>
+  <h2>Log</h2>
+  <pre id="log"></pre>
+</section>
 
-<h2>Logs</h2>
-<div id="log"></div>
+</main>
 
 <script>
-// === Basic logging function ===
-function log(msg) {
-  const logDiv = document.getElementById('log');
-  logDiv.textContent += msg + '\n';
-  logDiv.scrollTop = logDiv.scrollHeight;
-}
+(async function(){
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const trackContainer = document.getElementById('trackContainer');
+  const timeline = document.getElementById('timeline');
+  const automationCanvas = document.getElementById('automationCanvas');
+  const automationCtx = automationCanvas.getContext('2d');
+  const logEl = document.getElementById('log');
 
-// === Audio Context Setup ===
-const AudioContext = window.AudioContext || window.webkitAudioContext;
-const audioCtx = new AudioContext();
+  function log(msg) {
+    logEl.textContent += msg + '\n';
+    logEl.scrollTop = logEl.scrollHeight;
+  }
 
-let tracks = [];
-let isPlaying = false;
+  // Tracks and clips data
+  let tracks = [];
+  let clips = [];
 
-// === Track Handling ===
-function createTrack(audioBuffer) {
-  return {
-    buffer: audioBuffer,
-    source: null,
-    gainNode: audioCtx.createGain(),
-    panNode: audioCtx.createStereoPanner(),
-    effects: {
-      echo: false,
-      reverb: false,
-    },
-    settings: {
-      gain: 1,
-      pan: 0,
-    },
-    isPlaying: false,
-  };
-}
+  // Automation data: per track, per param, array of {time (sec), value}
+  // We'll init with linear automation from 1.0 volume, 0 pan, 0.5 delayFeedback
+  // For simplicity limit points count
+  const automationParams = ['volume','pan','delayFeedback'];
+  let automationData = {};
 
-// Load file helper
-function loadAudioFile(file) {
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    audioCtx.decodeAudioData(e.target.result).then(buffer => {
-      const track = createTrack(buffer);
-      tracks.push(track);
-      renderTracks();
-      log('Loaded track: ' + file.name);
-    }).catch(err => log('Decode error: ' + err));
-  };
-  reader.readAsArrayBuffer(file);
-}
+  // Initialize automationData for all tracks on param change or track add
+  function ensureAutomation(trackId) {
+    if(!automationData[trackId]) {
+      automationData[trackId] = {};
+      automationParams.forEach(param => {
+        automationData[trackId][param] = [{time:0,value: param==='volume'?1 : (param==='pan'?0:0.5)}];
+      });
+    }
+  }
 
-// Render track controls
-function renderTracks() {
-  const list = document.getElementById('trackList');
-  list.innerHTML = '';
-  tracks.forEach((track, idx) => {
+  // Notes for note editor
+  let notes = [];
+  let selectedNote = null;
+  let draggingNote = false;
+  const basePitch = 60; // MIDI middle C
+  const pitchHeight = 10;
+  let timeScale = 100; // px per second
+
+  // Step Sequencer
+  let sequencerSteps = new Array(16).fill(false);
+  let tempo = 90;
+
+  // Effect nodes global references
+  let vinylNoiseNode = null;
+  let vinylNoiseGain = null;
+  let convolverNode = null;
+
+  // Mic recording
+  let mediaRecorder = null;
+  let micChunks = [];
+
+  // Clip dragging and resizing state
+  let draggingClip = null;
+  let resizingClip = null;
+  let dragOffsetX = 0;
+  let resizeStartWidth = 0;
+  let resizeStartX = 0;
+
+  // Current selected clip for automation focus
+  let focusedTrackId = null;
+
+  // Create UI track
+  function addTrack(buffer, name = 'Untitled') {
+    const track = {
+      id: 'track-' + tracks.length,
+      buffer,
+      name,
+      gainNode: audioCtx.createGain(),
+      panNode: audioCtx.createStereoPanner(),
+      clips: [],
+      source: null
+    };
+    tracks.push(track);
+    ensureAutomation(track.id);
+
     const div = document.createElement('div');
-    div.className = 'track';
+    div.className = 'track-row';
+    div.id = track.id;
     div.innerHTML = `
-      <strong>Track ${idx+1}</strong><br>
-      <button data-idx="${idx}" class="playTrackBtn">Play</button>
-      <button data-idx="${idx}" class="pauseTrackBtn">Pause</button>
-      <button data-idx="${idx}" class="stopTrackBtn">Stop</button><br>
-      Gain: <input type="range" min="0" max="2" step="0.01" data-idx="${idx}" class="gainSlider" value="${track.settings.gain}"><br>
-      Pan: <input type="range" min="-1" max="1" step="0.01" data-idx="${idx}" class="panSlider" value="${track.settings.pan}"><br>
-      Echo: <input type="checkbox" data-idx="${idx}" class="echoToggle" ${track.effects.echo ? 'checked' : ''}><br>
-      Reverb: <input type="checkbox" data-idx="${idx}" class="reverbToggle" ${track.effects.reverb ? 'checked' : ''}><br>
-      <button data-idx="${idx}" class="removeTrackBtn">Remove</button>
+      <strong>${track.name}</strong>
+      <label>Vol: <input type="range" min="0" max="1" step="0.01" value="1" class="volume"></label>
+      <label>Pan: <input type="range" min="-1" max="1" step="0.01" value="0" class="pan"></label>
+      <button class="addClipBtn">Add Clip</button>
     `;
-    list.appendChild(div);
-  });
-  attachTrackEventListeners();
-}
+    trackContainer.appendChild(div);
 
-// Track control event handlers
-function attachTrackEventListeners() {
-  document.querySelectorAll('.playTrackBtn').forEach(btn =>
-    btn.onclick = () => playTrack(parseInt(btn.dataset.idx))
-  );
-  document.querySelectorAll('.pauseTrackBtn').forEach(btn =>
-    btn.onclick = () => pauseTrack(parseInt(btn.dataset.idx))
-  );
-  document.querySelectorAll('.stopTrackBtn').forEach(btn =>
-    btn.onclick = () => stopTrack(parseInt(btn.dataset.idx))
-  );
-  document.querySelectorAll('.gainSlider').forEach(slider =>
-    slider.oninput = e => {
-      const idx = parseInt(e.target.dataset.idx);
-      tracks[idx].settings.gain = parseFloat(e.target.value);
-      if (tracks[idx].gainNode) tracks[idx].gainNode.gain.value = tracks[idx].settings.gain;
-    }
-  );
-  document.querySelectorAll('.panSlider').forEach(slider =>
-    slider.oninput = e => {
-      const idx = parseInt(e.target.dataset.idx);
-      tracks[idx].settings.pan = parseFloat(e.target.value);
-      if (tracks[idx].panNode) tracks[idx].panNode.pan.value = tracks[idx].settings.pan;
-    }
-  );
-  document.querySelectorAll('.echoToggle').forEach(chk =>
-    chk.onchange = e => {
-      const idx = parseInt(e.target.dataset.idx);
-      tracks[idx].effects.echo = e.target.checked;
-      log(`Track ${idx+1} Echo ${e.target.checked ? 'enabled' : 'disabled'}`);
-    }
-  );
-  document.querySelectorAll('.reverbToggle').forEach(chk =>
-    chk.onchange = e => {
-      const idx = parseInt(e.target.dataset.idx);
-      tracks[idx].effects.reverb = e.target.checked;
-      log(`Track ${idx+1} Reverb ${e.target.checked ? 'enabled' : 'disabled'}`);
-    }
-  );
-  document.querySelectorAll('.removeTrackBtn').forEach(btn =>
-    btn.onclick = e => {
-      const idx = parseInt(e.target.dataset.idx);
-      tracks.splice(idx, 1);
-      renderTracks();
-      log(`Removed track ${idx+1}`);
-    }
-  );
-}
+    div.querySelector('.volume').addEventListener('input', e => {
+      track.gainNode.gain.value = parseFloat(e.target.value);
+      // Update automation data volume 0 index for immediate UI feedback
+      automationData[track.id].volume[0].value = parseFloat(e.target.value);
+      if(focusedTrackId === track.id) drawAutomationCurve();
+    });
+    div.querySelector('.pan').addEventListener('input', e => {
+      track.panNode.pan.value = parseFloat(e.target.value);
+      automationData[track.id].pan[0].value = parseFloat(e.target.value);
+      if(focusedTrackId === track.id) drawAutomationCurve();
+    });
+    div.querySelector('.addClipBtn').addEventListener('click', () => {
+      addClip(track, 0, buffer.duration);
+    });
 
-// Play, Pause, Stop for tracks
-function playTrack(idx) {
-  if (!tracks[idx]) return;
-  if (tracks[idx].isPlaying) return;
-  const source = audioCtx.createBufferSource();
-  source.buffer = tracks[idx].buffer;
-  // Effects chain
-  let nodeChain = source;
-
-  // Echo effect (simple delay)
-  if (tracks[idx].effects.echo) {
-    const delay = audioCtx.createDelay();
-    delay.delayTime.value = 0.3;
-    const feedback = audioCtx.createGain();
-    feedback.gain.value = 0.4;
-    delay.connect(feedback);
-    feedback.connect(delay);
-    nodeChain.connect(delay);
-    nodeChain = delay;
+    log(`Track added: ${name}`);
+    return track;
   }
 
-  // Reverb effect (convolution with impulse)
-  if (tracks[idx].effects.reverb) {
-    const convolver = audioCtx.createConvolver();
-    convolver.buffer = createReverbImpulse(audioCtx, 2.5);
-    nodeChain.connect(convolver);
-    nodeChain = convolver;
+  // Add clip to timeline
+  function addClip(track, startTime, duration) {
+    const clip = {
+      id: 'clip-' + clips.length,
+      track,
+      startTime,
+      duration,
+      selected: false,
+    };
+    clips.push(clip);
+    track.clips.push(clip);
+    renderClips();
+    log(`Clip added to ${track.name} @ ${startTime.toFixed(2)}s duration ${duration.toFixed(2)}s`);
   }
 
-  nodeChain.connect(tracks[idx].gainNode);
-  tracks[idx].gainNode.connect(tracks[idx].panNode);
-  tracks[idx].panNode.connect(audioCtx.destination);
+  // Render clips on timeline
+  function renderClips() {
+    timeline.innerHTML = '';
+    clips.forEach(clip => {
+      const div = document.createElement('div');
+      div.className = 'clip' + (clip.selected ? ' selected' : '');
+      div.style.width = (clip.duration * timeScale) + 'px';
+      div.style.left = (clip.startTime * timeScale) + 'px';
+      div.style.top = (tracks.indexOf(clip.track) * 80 + 10) + 'px';
+      div.dataset.id = clip.id;
+      div.textContent = clip.track.name;
 
-  tracks[idx].gainNode.gain.value = tracks[idx].settings.gain;
-  tracks[idx].panNode.pan.value = tracks[idx].settings.pan;
+      // Add resize handle
+      const resizeHandle = document.createElement('div');
+      resizeHandle.className = 'resize-handle';
+      div.appendChild(resizeHandle);
 
-  source.start(0);
-  tracks[idx].source = source;
-  tracks[idx].isPlaying = true;
+      timeline.appendChild(div);
 
-  source.onended = () => {
-    tracks[idx].isPlaying = false;
-    log(`Track ${idx+1} ended`);
-  };
+      // Clip dragging handlers
+      div.onmousedown = e => {
+        if(e.target === resizeHandle) return; // handled separately
+        draggingClip = clip;
+        dragOffsetX = e.clientX - div.getBoundingClientRect().left;
+        selectClip(clip);
+        e.preventDefault();
+      };
 
-  log(`Playing track ${idx+1}`);
-}
-
-function pauseTrack(idx) {
-  // No native pause for BufferSourceNode - stop and remember position needed (not implemented here)
-  stopTrack(idx);
-  log(`Paused track ${idx+1}`);
-}
-
-function stopTrack(idx) {
-  if (!tracks[idx] || !tracks[idx].isPlaying) return;
-  if (tracks[idx].source) {
-    tracks[idx].source.stop(0);
-    tracks[idx].isPlaying = false;
-    log(`Stopped track ${idx+1}`);
+      // Resize handle dragging
+      resizeHandle.onmousedown = e => {
+        resizingClip = clip;
+        resizeStartWidth = div.getBoundingClientRect().width;
+        resizeStartX = e.clientX;
+        selectClip(clip);
+        e.stopPropagation();
+        e.preventDefault();
+      };
+    });
   }
-}
 
-// Play/pause/stop all
-document.getElementById('playAllBtn').onclick = () => {
-  tracks.forEach((_, i) => playTrack(i));
-  isPlaying = true;
-};
-document.getElementById('pauseAllBtn').onclick = () => {
-  tracks.forEach((_, i) => pauseTrack(i));
-  isPlaying = false;
-};
-document.getElementById('stopAllBtn').onclick = () => {
-  tracks.forEach((_, i) => stopTrack(i));
-  isPlaying = false;
-};
+  // Select clip and deselect others
+  function selectClip(clip) {
+    clips.forEach(c => c.selected = false);
+    clip.selected = true;
+    renderClips();
+    focusedTrackId = clip.track.id;
+    drawAutomationCurve();
+  }
 
-// Add track (file input)
-document.getElementById('addTrackBtn').onclick = () => {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'audio/mp3,audio/wav,audio/mpeg';
-  input.onchange = () => {
-    if (input.files.length > 0) {
-      loadAudioFile(input.files[0]);
+  // Mouse move and up for dragging clips and resizing
+  window.onmousemove = e => {
+    if(draggingClip) {
+      const newLeft = e.clientX - dragOffsetX - timeline.getBoundingClientRect().left + timeline.scrollLeft;
+      draggingClip.startTime = Math.max(0, newLeft / timeScale);
+      renderClips();
+      drawAutomationCurve();
+    } else if(resizingClip) {
+      const deltaX = e.clientX - resizeStartX;
+      let newWidthPx = Math.max(10, resizeStartWidth + deltaX);
+      resizingClip.duration = newWidthPx / timeScale;
+      renderClips();
+      drawAutomationCurve();
     }
   };
-  input.click();
-};
+  window.onmouseup = e => {
+    draggingClip = null;
+    resizingClip = null;
+  };
 
-// === Microphone recording ===
-let recorder;
-let recordedChunks = [];
-document.getElementById('recordTrackBtn').onclick = async () => {
-  if (!recorder || recorder.state === 'inactive') {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      log('MediaDevices API not supported.');
+  // Automation drawing and editing
+  const automationParamSelect = document.getElementById('automationParamSelect');
+
+  // Resize automation canvas to timeline size
+  function resizeAutomationCanvas() {
+    automationCanvas.width = timeline.clientWidth;
+    automationCanvas.height = timeline.clientHeight;
+    automationCanvas.style.top = timeline.offsetTop + 'px';
+    automationCanvas.style.left = timeline.offsetLeft + 'px';
+  }
+  resizeAutomationCanvas();
+  window.addEventListener('resize', resizeAutomationCanvas);
+
+  // Linear interpolate automation points
+  function interpolateAutomation(points, time) {
+    if(points.length === 0) return 0;
+    if(time <= points[0].time) return points[0].value;
+    if(time >= points[points.length - 1].time) return points[points.length - 1].value;
+    for(let i=0; i < points.length -1; i++) {
+      if(time >= points[i].time && time <= points[i+1].time) {
+        const t = (time - points[i].time) / (points[i+1].time - points[i].time);
+        return points[i].value + t * (points[i+1].value - points[i].value);
+      }
+    }
+    return 0;
+  }
+
+  // Draw automation curve for focusedTrack and selected param
+  function drawAutomationCurve() {
+    automationCtx.clearRect(0, 0, automationCanvas.width, automationCanvas.height);
+    if(!focusedTrackId) return;
+    const param = automationParamSelect.value;
+    const points = automationData[focusedTrackId][param];
+    if(!points) return;
+
+    // Draw baseline
+    automationCtx.strokeStyle = '#555';
+    automationCtx.lineWidth = 1;
+    automationCtx.beginPath();
+    automationCtx.moveTo(0, automationCanvas.height);
+    automationCtx.lineTo(automationCanvas.width, automationCanvas.height);
+    automationCtx.stroke();
+
+    // Draw points and curve
+    automationCtx.strokeStyle = '#f05454';
+    automationCtx.lineWidth = 2;
+    automationCtx.beginPath();
+    points.forEach((pt, i) => {
+      const x = pt.time * timeScale;
+      const y = automationCanvas.height - pt.value * automationCanvas.height;
+      if(i === 0) automationCtx.moveTo(x, y);
+      else automationCtx.lineTo(x, y);
+    });
+    automationCtx.stroke();
+
+    // Draw points
+    points.forEach(pt => {
+      const x = pt.time * timeScale;
+      const y = automationCanvas.height - pt.value * automationCanvas.height;
+      automationCtx.fillStyle = '#f05454';
+      automationCtx.beginPath();
+      automationCtx.arc(x, y, 6, 0, Math.PI*2);
+      automationCtx.fill();
+    });
+  }
+  drawAutomationCurve();
+
+  // Find closest automation point under mouse
+  function findPointAtPos(points, x, y) {
+    for(let pt of points) {
+      const px = pt.time * timeScale;
+      const py = automationCanvas.height - pt.value * automationCanvas.height;
+      const dist = Math.hypot(px - x, py - y);
+      if(dist < 10) return pt;
+    }
+    return null;
+  }
+
+  // Automation canvas interaction for adding/moving points
+  let draggedPoint = null;
+  automationCanvas.onmousedown = e => {
+    if(!focusedTrackId) return;
+    const param = automationParamSelect.value;
+    const points = automationData[focusedTrackId][param];
+    const rect = automationCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    let pt = findPointAtPos(points, x, y);
+    if(pt) {
+      draggedPoint = pt;
+    } else {
+      // Add new point
+      const newTime = x / timeScale;
+      const newValue = 1 - y / automationCanvas.height;
+      // Insert sorted
+      points.push({time:newTime, value:newValue});
+      points.sort((a,b) => a.time - b.time);
+      draggedPoint = points.find(p => p.time === newTime && p.value === newValue);
+    }
+    drawAutomationCurve();
+  };
+  automationCanvas.onmousemove = e => {
+    if(!draggedPoint) return;
+    const rect = automationCanvas.getBoundingClientRect();
+    let x = e.clientX - rect.left;
+    let y = e.clientY - rect.top;
+
+    x = Math.min(Math.max(0, x), automationCanvas.width);
+    y = Math.min(Math.max(0, y), automationCanvas.height);
+
+    draggedPoint.time = x / timeScale;
+    draggedPoint.value = 1 - y / automationCanvas.height;
+
+    // Clamp values depending on param
+    const param = automationParamSelect.value;
+    if(param === 'pan') draggedPoint.value = Math.min(Math.max(-1, draggedPoint.value*2-1),1);
+    else if(param === 'delayFeedback') draggedPoint.value = Math.min(Math.max(0, draggedPoint.value), 0.95);
+    else draggedPoint.value = Math.min(Math.max(0, draggedPoint.value), 1);
+
+    automationData[focusedTrackId][param].sort((a,b) => a.time - b.time);
+
+    drawAutomationCurve();
+  };
+  automationCanvas.onmouseup = e => {
+    draggedPoint = null;
+  };
+  automationCanvas.onmouseleave = e => {
+    draggedPoint = null;
+  };
+
+  // Automation param change redraw
+  automationParamSelect.onchange = drawAutomationCurve;
+
+  // Note editor setup
+  const noteEditorCanvas = document.getElementById('noteEditorCanvas');
+  const noteCtx = noteEditorCanvas.getContext('2d');
+  const octaveSelect = document.getElementById('octaveSelect');
+  const noteLengthInput = document.getElementById('noteLength');
+  const addNoteBtn = document.getElementById('addNoteBtn');
+  const deleteNoteBtn = document.getElementById('deleteNoteBtn');
+  const clearNotesBtn = document.getElementById('clearNotesBtn');
+
+  let selectedNoteIndex = -1;
+  function drawNoteEditor() {
+    noteCtx.clearRect(0, 0, noteEditorCanvas.width, noteEditorCanvas.height);
+    // Draw background piano keys (optional)
+    for(let i=0; i<noteEditorCanvas.width/timeScale; i+=0.5) {
+      const x = i * timeScale;
+      noteCtx.fillStyle = (Math.floor(i) % 2 === 0) ? '#222' : '#333';
+      noteCtx.fillRect(x, 0, timeScale*0.5, noteEditorCanvas.height);
+    }
+    // Draw grid horizontal lines for pitches
+    const pitchCount = 25;
+    noteCtx.strokeStyle = '#444';
+    noteCtx.lineWidth = 1;
+    for(let i=0; i<=pitchCount; i++) {
+      const y = noteEditorCanvas.height - i * pitchHeight;
+      noteCtx.beginPath();
+      noteCtx.moveTo(0,y);
+      noteCtx.lineTo(noteEditorCanvas.width,y);
+      noteCtx.stroke();
+    }
+    // Draw notes as rectangles
+    notes.forEach((note,i) => {
+      const x = note.start * timeScale;
+      const y = noteEditorCanvas.height - (note.pitch - basePitch) * pitchHeight - pitchHeight;
+      const w = note.length * timeScale;
+      const h = pitchHeight;
+      noteCtx.fillStyle = i === selectedNoteIndex ? '#f05454' : '#a03030';
+      noteCtx.fillRect(x, y, w, h);
+      noteCtx.strokeStyle = '#fff';
+      noteCtx.strokeRect(x, y, w, h);
+    });
+  }
+  drawNoteEditor();
+
+  // Note editor click selection and dragging
+  let draggingNoteIndex = -1;
+  let dragNoteOffsetX = 0;
+  noteEditorCanvas.onmousedown = e => {
+    const rect = noteEditorCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    for(let i=0; i<notes.length; i++) {
+      const note = notes[i];
+      const nx = note.start * timeScale;
+      const ny = noteEditorCanvas.height - (note.pitch - basePitch) * pitchHeight - pitchHeight;
+      const nw = note.length * timeScale;
+      const nh = pitchHeight;
+      if(x >= nx && x <= nx + nw && y >= ny && y <= ny + nh) {
+        selectedNoteIndex = i;
+        draggingNoteIndex = i;
+        dragNoteOffsetX = x - nx;
+        drawNoteEditor();
+        return;
+      }
+    }
+    selectedNoteIndex = -1;
+    drawNoteEditor();
+  };
+  noteEditorCanvas.onmousemove = e => {
+    if(draggingNoteIndex >= 0) {
+      const rect = noteEditorCanvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const newStart = (x - dragNoteOffsetX) / timeScale;
+      if(newStart >= 0) {
+        notes[draggingNoteIndex].start = newStart;
+        drawNoteEditor();
+      }
+    }
+  };
+  noteEditorCanvas.onmouseup = e => {
+    draggingNoteIndex = -1;
+  };
+  noteEditorCanvas.onmouseleave = e => {
+    draggingNoteIndex = -1;
+  };
+
+  // Add note button
+  addNoteBtn.onclick = () => {
+    const octave = parseInt(octaveSelect.value);
+    const pitch = basePitch + (octave - 4) * 12; // middle C + octave offset
+    const length = parseFloat(noteLengthInput.value);
+    const start = 0; // start at 0 by default
+    notes.push({start, pitch, length});
+    selectedNoteIndex = notes.length - 1;
+    drawNoteEditor();
+    log('Note added');
+  };
+
+  // Delete selected note
+  deleteNoteBtn.onclick = () => {
+    if(selectedNoteIndex >= 0) {
+      notes.splice(selectedNoteIndex, 1);
+      selectedNoteIndex = -1;
+      drawNoteEditor();
+      log('Note deleted');
+    }
+  };
+
+  // Clear all notes
+  clearNotesBtn.onclick = () => {
+    notes = [];
+    selectedNoteIndex = -1;
+    drawNoteEditor();
+    log('Notes cleared');
+  };
+
+  // Step sequencer UI
+  const stepSequencerEl = document.getElementById('stepSequencer');
+  for(let i=0; i<16; i++) {
+    const stepBtn = document.createElement('div');
+    stepBtn.className = 'step';
+    stepBtn.dataset.index = i;
+    stepBtn.onclick = () => {
+      sequencerSteps[i] = !sequencerSteps[i];
+      stepBtn.classList.toggle('active', sequencerSteps[i]);
+    };
+    stepSequencerEl.appendChild(stepBtn);
+  }
+
+  // Tempo input
+  const tempoInput = document.getElementById('tempoInput');
+  tempoInput.onchange = () => {
+    const val = parseInt(tempoInput.value);
+    if(val >= 40 && val <= 240) {
+      tempo = val;
+      log('Tempo set to ' + tempo);
+    }
+  };
+
+  // 808 Bass synth controls
+  const bassFreqInput = document.getElementById('bassFreq');
+  const bassDecayInput = document.getElementById('bassDecay');
+  const playBassBtn = document.getElementById('playBassBtn');
+
+  function playBassNote() {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(parseFloat(bassFreqInput.value), audioCtx.currentTime);
+    gain.gain.setValueAtTime(1, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + parseFloat(bassDecayInput.value)/1000);
+
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + parseFloat(bassDecayInput.value)/1000);
+  }
+  playBassBtn.onclick = playBassNote;
+
+  // Effects nodes and toggles
+  const vinylCrackleToggle = document.getElementById('vinylCrackleToggle');
+  const pitchShiftToggle = document.getElementById('pitchShiftToggle');
+  const pitchShiftRange = document.getElementById('pitchShiftRange');
+  const sampleChopToggle = document.getElementById('sampleChopToggle');
+  const delayToggle = document.getElementById('delayToggle');
+  const delayFeedbackRange = document.getElementById('delayFeedbackRange');
+  const reverbToggle = document.getElementById('reverbToggle');
+  const reverbMixRange = document.getElementById('reverbMixRange');
+
+  pitchShiftToggle.onchange = () => {
+    pitchShiftRange.disabled = !pitchShiftToggle.checked;
+  };
+  delayToggle.onchange = () => {
+    delayFeedbackRange.disabled = !delayToggle.checked;
+  };
+  reverbToggle.onchange = () => {
+    reverbMixRange.disabled = !reverbToggle.checked;
+  };
+
+  // Vinyl crackle noise source generator
+  function createVinylNoise(ctx) {
+    const bufferSize = 4096;
+    const node = ctx.createScriptProcessor(bufferSize, 1, 1);
+    node.onaudioprocess = e => {
+      const output = e.outputBuffer.getChannelData(0);
+      for(let i=0; i<bufferSize; i++) {
+        output[i] = (Math.random() < 0.005) ? (Math.random() * 2 -1)*0.15 : 0;
+      }
+    };
+    return node;
+  }
+
+  // Load and decode audio file
+  async function loadAudioFile(file) {
+    const arrayBuffer = await file.arrayBuffer();
+    return await audioCtx.decodeAudioData(arrayBuffer);
+  }
+
+  // File import button
+  const importAudioBtn = document.getElementById('importAudioBtn');
+  const fileInput = document.getElementById('fileInput');
+
+  importAudioBtn.onclick = () => {
+    fileInput.click();
+  };
+
+  fileInput.onchange = async e => {
+    const files = e.target.files;
+    for(let file of files) {
+      try {
+        const buffer = await loadAudioFile(file);
+        addTrack(buffer, file.name);
+      } catch (err) {
+        log(`Failed to load ${file.name}: ${err}`);
+      }
+    }
+    fileInput.value = '';
+  };
+
+  // Mic recording
+  const recordMicBtn = document.getElementById('recordMicBtn');
+  const recordingStatus = document.getElementById('recordingStatus');
+  let recordingStream = null;
+
+  recordMicBtn.onclick = async () => {
+    if(mediaRecorder && mediaRecorder.state === 'recording') {
+      mediaRecorder.stop();
+      recordingStatus.textContent = 'Stopping recording...';
+      return;
+    }
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert('Microphone access not supported');
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      recorder = new MediaRecorder(stream);
-      recordedChunks = [];
-      recorder.ondataavailable = e => {
-        if (e.data.size > 0) recordedChunks.push(e.data);
+      recordingStream = await navigator.mediaDevices.getUserMedia({audio:true});
+      mediaRecorder = new MediaRecorder(recordingStream);
+      micChunks = [];
+      mediaRecorder.ondataavailable = e => micChunks.push(e.data);
+      mediaRecorder.onstop = async () => {
+        const blob = new Blob(micChunks, {type: 'audio/webm'});
+        const arrayBuffer = await blob.arrayBuffer();
+        const buffer = await audioCtx.decodeAudioData(arrayBuffer);
+        addTrack(buffer, 'Mic Recording');
+        recordingStatus.textContent = 'Recording stopped and track added';
+        recordingStream.getTracks().forEach(t => t.stop());
+        recordingStream = null;
       };
-      recorder.onstop = () => {
-        const blob = new Blob(recordedChunks, { type: 'audio/webm' });
-        const fileReader = new FileReader();
-        fileReader.onload = function() {
-          audioCtx.decodeAudioData(this.result).then(buffer => {
-            const track = createTrack(buffer);
-            tracks.push(track);
-            renderTracks();
-            log('Recorded track added');
-          });
-        };
-        fileReader.readAsArrayBuffer(blob);
-      };
-      recorder.start();
-      log('Recording started...');
-      document.getElementById('recordTrackBtn').textContent = 'Stop Recording';
+      mediaRecorder.start();
+      recordingStatus.textContent = 'Recording... Click again to stop.';
     } catch(e) {
-      log('Error getting microphone: ' + e);
+      alert('Failed to get microphone: ' + e.message);
     }
-  } else if (recorder.state === 'recording') {
-    recorder.stop();
-    log('Recording stopped');
-    document.getElementById('recordTrackBtn').textContent = 'Record Track (Mic)';
-  }
-};
-
-// === Export WAV ===
-function floatTo16BitPCM(float32Array) {
-  const output = new Int16Array(float32Array.length);
-  for(let i=0; i < float32Array.length; i++) {
-    let s = Math.max(-1, Math.min(1, float32Array[i]));
-    output[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-  }
-  return output;
-}
-
-function bufferToWav(abuffer) {
-  const numOfChan = abuffer.numberOfChannels,
-        length = abuffer.length * numOfChan * 2 + 44,
-        buffer = new ArrayBuffer(length),
-        view = new DataView(buffer),
-        channels = [],
-        sampleRate = abuffer.sampleRate,
-        offset = 0,
-        pos = 0;
-
-  function setUint16(data) { view.setUint16(pos, data, true); pos += 2; }
-  function setUint32(data) { view.setUint32(pos, data, true); pos += 4; }
-
-  function writeString(s) {
-    for(let i=0; i < s.length; i++) view.setUint8(pos++, s.charCodeAt(i));
-  }
-
-  // Write WAV header
-  writeString('RIFF'); setUint32(length - 8); writeString('WAVE'); writeString('fmt ');
-  setUint32(16); setUint16(1); setUint16(numOfChan); setUint32(sampleRate);
-  setUint32(sampleRate * 2 * numOfChan); setUint16(numOfChan * 2); setUint16(16);
-  writeString('data'); setUint32(length - pos - 4);
-
-  // Write interleaved data
-  for(let i=0; i < numOfChan; i++) channels.push(abuffer.getChannelData(i));
-  while(offset < abuffer.length) {
-    for(let i=0; i < numOfChan; i++) {
-      const sample = Math.max(-1, Math.min(1, channels[i][offset]));
-      view.setInt16(pos, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
-      pos += 2;
-    }
-    offset++;
-  }
-  return new Blob([buffer], { type: 'audio/wav' });
-}
-
-function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename; a.click();
-  URL.revokeObjectURL(url);
-}
-
-document.getElementById('exportWavBtn').onclick = () => {
-  if (tracks.length === 0) {
-    log('No tracks to export');
-    return;
-  }
-  // Simple mixdown
-  const length = Math.max(...tracks.map(t => t.buffer.length));
-  const sampleRate = audioCtx.sampleRate;
-  const offlineCtx = new OfflineAudioContext(2, length, sampleRate);
-  
-  tracks.forEach(track => {
-    const source = offlineCtx.createBufferSource();
-    source.buffer = track.buffer;
-    source.connect(offlineCtx.destination);
-    source.start(0);
-  });
-
-  offlineCtx.startRendering().then(renderedBuffer => {
-    const wavBlob = bufferToWav(renderedBuffer);
-    downloadBlob(wavBlob, 'phonk-export.wav');
-    log('Exported WAV');
-  }).catch(err => log('Export error: ' + err));
-};
-
-// === MP3 Export (very limited) ===
-// We can only export raw PCM WAV easily here.
-// Full MP3 encoding requires large libs not feasible offline on iPhone without APIs.
-
-// === Piano Roll Note Editor ===
-const noteCanvas = document.getElementById('noteCanvas');
-const ctx = noteCanvas.getContext('2d');
-const notes = [];
-let selectedNote = null;
-let draggingNote = false;
-let dragOffset = {x:0, y:0};
-
-const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-const canvasWidth = 900;
-const canvasHeight = 150;
-noteCanvas.width = canvasWidth;
-noteCanvas.height = canvasHeight;
-
-const timeScale = 100; // px per second
-const pitchHeight = 12; // px per note
-const basePitch = 60; // MIDI note number for C4
-
-function drawPianoRoll() {
-  ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-
-  for(let i=0; i < 12; i++) {
-    const y = canvasHeight - (i+1)*pitchHeight;
-    ctx.fillStyle = (i % 2 === 0) ? '#333' : '#222';
-    ctx.fillRect(0, y, canvasWidth, pitchHeight);
-    ctx.fillStyle = '#aaa';
-    ctx.font = '10px monospace';
-    ctx.fillText(NOTE_NAMES[i], 2, y + pitchHeight - 2);
-  }
-
-  for(let i=0; i < notes.length; i++) {
-    const n = notes[i];
-    const x = n.time * timeScale;
-    const y = canvasHeight - (n.pitch - basePitch + 1) * pitchHeight;
-    const w = n.duration * timeScale;
-    const h = pitchHeight - 2;
-    ctx.fillStyle = (n === selectedNote) ? '#0ff' : '#0a8';
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = '#005';
-    ctx.strokeRect(x, y, w, h);
-  }
-}
-
-function addNote() {
-  const octave = parseInt(document.getElementById('octaveSelect').value);
-  const noteLength = parseFloat(document.getElementById('noteLength').value);
-  const pitch = 12 * (octave + 1);
-  const time = 0;
-  const duration = noteLength;
-  notes.push({time, pitch, duration});
-  drawPianoRoll();
-  log('Note added');
-}
-
-function deleteNote() {
-  if (!selectedNote) return;
-  const idx = notes.indexOf(selectedNote);
-  if (idx >= 0) notes.splice(idx, 1);
-  selectedNote = null;
-  drawPianoRoll();
-  log('Note deleted');
-}
-
-function clearNotes() {
-  notes.length = 0;
-  selectedNote = null;
-  drawPianoRoll();
-  log('All notes cleared');
-}
-
-noteCanvas.addEventListener('mousedown', e => {
-  const rect = noteCanvas.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const y = e.clientY - rect.top;
-  selectedNote = null;
-  for(let n of notes) {
-    const nx = n.time * timeScale;
-    const ny = canvasHeight - (n.pitch - basePitch + 1)*pitchHeight;
-    const nw = n.duration * timeScale;
-    const nh = pitchHeight - 2;
-    if(x >= nx && x <= nx+nw && y >= ny && y <= ny+nh) {
-      selectedNote = n;
-      draggingNote = true;
-      dragOffset.x = x - nx;
-      dragOffset.y = y - ny;
-      break;
-    }
-  }
-  drawPianoRoll();
-});
-
-noteCanvas.addEventListener('mousemove', e => {
-  if (!draggingNote || !selectedNote) return;
-  const rect = noteCanvas.getBoundingClientRect();
-  const x = e.clientX - rect.left - dragOffset.x;
-  const y = e.clientY - rect.top - dragOffset.y;
-  // Snap time and pitch
-  selectedNote.time = Math.max(0, x / timeScale);
-  let pitchIndex = Math.floor((canvasHeight - y) / pitchHeight) + basePitch - 1;
-  pitchIndex = Math.min(127, Math.max(0, pitchIndex));
-  selectedNote.pitch = pitchIndex;
-  drawPianoRoll();
-});
-
-noteCanvas.addEventListener('mouseup', () => {
-  draggingNote = false;
-});
-
-document.getElementById('addNoteBtn').onclick = addNote;
-document.getElementById('deleteNoteBtn').onclick = deleteNote;
-document.getElementById('clearNotesBtn').onclick = clearNotes;
-
-// === Voice Transcription (Speech to Text) ===
-if ('webkitSpeechRecognition' in window) {
-  const recognition = new webkitSpeechRecognition();
-  recognition.lang = 'en-US';
-  recognition.continuous = false;
-  recognition.interimResults = false;
-
-  recognition.onstart = () => log('Voice recognition started...');
-  recognition.onerror = e => log('Recognition error: ' + e.error);
-  recognition.onend = () => log('Voice recognition ended');
-  recognition.onresult = e => {
-    const transcript = e.results[0][0].transcript;
-    log('Recognized: ' + transcript);
   };
 
-  // Example: start recognition on a button press or automatically if you add UI for it
-} else {
-  log('Speech Recognition API not supported');
-}
+  // Playback and mixing engine
+  let playingSources = [];
 
-// === Web MIDI API (Desktop only) ===
-if (navigator.requestMIDIAccess) {
-  navigator.requestMIDIAccess().then(midiAccess => {
-    log('MIDI Access granted');
-    for (let input of midiAccess.inputs.values()) {
-      input.onmidimessage = event => {
-        const [status, note, velocity] = event.data;
-        if ((status & 0xf0) === 0x90 && velocity > 0) {
-          log(`MIDI Note On: ${note} Velocity: ${velocity}`);
-          // Could add code to play sine tone for note here
-        } else if ((status & 0xf0) === 0x80 || velocity === 0) {
-          log(`MIDI Note Off: ${note}`);
+  // Simple gain and pan automation applying at playback time
+  function createSourceWithAutomation(clip) {
+    const track = clip.track;
+    const source = audioCtx.createBufferSource();
+    source.buffer = track.buffer;
+
+    // Create nodes chain
+    const gainNode = audioCtx.createGain();
+    const panNode = audioCtx.createStereoPanner();
+    const delayNode = audioCtx.createDelay(1);
+    const delayFeedbackGain = audioCtx.createGain();
+    const reverbNode = audioCtx.createConvolver();
+    const reverbGain = audioCtx.createGain();
+
+    // Setup delay feedback loop
+    delayNode.delayTime.value = 0.3;
+    delayFeedbackGain.gain.value = 0.5;
+    delayNode.connect(delayFeedbackGain);
+    delayFeedbackGain.connect(delayNode);
+
+    // Reverb mix
+    reverbGain.gain.value = 0.3;
+
+    // Connect nodes
+    source.connect(gainNode).connect(panNode);
+    panNode.connect(delayNode);
+    delayNode.connect(reverbNode);
+    reverbNode.connect(reverbGain);
+    delayNode.connect(audioCtx.destination);
+    reverbGain.connect(audioCtx.destination);
+    panNode.connect(audioCtx.destination);
+
+    // Vinyl noise node
+    if(vinylCrackleToggle.checked) {
+      if(!vinylNoiseNode) {
+        vinylNoiseNode = createVinylNoise(audioCtx);
+        vinylNoiseGain = audioCtx.createGain();
+        vinylNoiseGain.gain.value = 0.1;
+        vinylNoiseNode.connect(vinylNoiseGain).connect(audioCtx.destination);
+        vinylNoiseNode.connect(audioCtx.destination);
+        vinylNoiseNode.connect(audioCtx.destination);
+      }
+    } else {
+      if(vinylNoiseNode) {
+        vinylNoiseNode.disconnect();
+        vinylNoiseNode = null;
+      }
+    }
+
+    // Pitch shift (simple playbackRate adjust)
+    source.playbackRate.value = pitchShiftToggle.checked ? Math.pow(2, pitchShiftRange.value / 12) : 1;
+
+    // Delay feedback gain
+    delayFeedbackGain.gain.value = delayToggle.checked ? parseFloat(delayFeedbackRange.value) : 0;
+
+    // Reverb mix gain
+    reverbGain.gain.value = reverbToggle.checked ? parseFloat(reverbMixRange.value) : 0;
+
+    // For automation at playback:
+    // We'll use setValueAtTime with linearRampToValueAtTime for volume, pan, delayFeedback every 0.1s approx
+
+    const startTime = audioCtx.currentTime + 0.1;
+    const clipStart = clip.startTime;
+    const clipEnd = clipStart + clip.duration;
+
+    function applyAutomation() {
+      const paramNames = ['volume', 'pan', 'delayFeedback'];
+      paramNames.forEach(param => {
+        const points = automationData[track.id][param];
+        let t = clipStart;
+        while(t < clipEnd) {
+          let val = interpolateAutomation(points, t);
+          if(param === 'volume') {
+            gainNode.gain.setValueAtTime(val, startTime + (t - clipStart));
+          } else if(param === 'pan') {
+            panNode.pan.setValueAtTime(val, startTime + (t - clipStart));
+          } else if(param === 'delayFeedback') {
+            delayFeedbackGain.gain.setValueAtTime(val, startTime + (t - clipStart));
+          }
+          t += 0.1;
         }
-      };
+      });
     }
-  }).catch(err => log('MIDI Access error: ' + err));
-} else {
-  log('Web MIDI API not supported');
-}
+    applyAutomation();
 
-// === Helper: Create Reverb Impulse Response ===
-function createReverbImpulse(context, duration = 2.0) {
-  const sampleRate = context.sampleRate;
-  const length = sampleRate * duration;
-  const impulse = context.createBuffer(2, length, sampleRate);
-  for (let channel = 0; channel < 2; channel++) {
-    const channelData = impulse.getChannelData(channel);
-    for (let i = 0; i < length; i++) {
-      channelData[i] = (Math.random() * 2 - 1) * (1 - i / length);
-    }
+    return {source, gainNode, panNode, delayNode, delayFeedbackGain, reverbNode, reverbGain};
   }
-  return impulse;
-}
 
-// Initial render of tracks list
-renderTracks();
-drawPianoRoll();
+  // Play all clips
+  const playAllBtn = document.getElementById('playAllBtn');
+  const pauseAllBtn = document.getElementById('pauseAllBtn');
+  const stopAllBtn = document.getElementById('stopAllBtn');
 
+  playAllBtn.onclick = () => {
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+    stopAllBtn.onclick();
+    playingSources = [];
+    clips.forEach(clip => {
+      const {source} = createSourceWithAutomation(clip);
+      source.start(audioCtx.currentTime + clip.startTime);
+      playingSources.push(source);
+    });
+    log('Playback started');
+  };
+
+  pauseAllBtn.onclick = () => {
+    if(audioCtx.state === 'running') {
+      audioCtx.suspend();
+      log('Playback paused');
+    }
+  };
+
+  stopAllBtn.onclick = () => {
+    playingSources.forEach(s => {
+      try { s.stop(); } catch {}
+    });
+    playingSources = [];
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+    log('Playback stopped');
+  };
+
+  // Export full mix to WAV offline
+  const exportBtn = document.getElementById('exportBtn');
+  exportBtn.onclick = async () => {
+    log('Starting export...');
+    const exportDuration = Math.max(...clips.map(c => c.startTime + c.duration)) + 1;
+
+    // Offline AudioContext for rendering mix
+    const offlineCtx = new OfflineAudioContext(2, exportDuration * audioCtx.sampleRate, audioCtx.sampleRate);
+
+    // Recreate tracks & clips in offline context
+    tracks.forEach(track => {
+      ensureAutomation(track.id);
+      track.clips.forEach(clip => {
+        if(!clips.includes(clip)) return;
+        if(clip.duration <= 0) return;
+        const offlineSource = offlineCtx.createBufferSource();
+        offlineSource.buffer = clip.track.buffer;
+        const gainNode = offlineCtx.createGain();
+        const panNode = offlineCtx.createStereoPanner();
+        const delayNode = offlineCtx.createDelay(1);
+        const delayFeedbackGain = offlineCtx.createGain();
+        const reverbNode = offlineCtx.createConvolver();
+        const reverbGain = offlineCtx.createGain();
+
+        delayNode.delayTime.value = 0.3;
+        delayFeedbackGain.gain.value = 0.5;
+
+        // Connect delay feedback loop
+        delayNode.connect(delayFeedbackGain);
+        delayFeedbackGain.connect(delayNode);
+
+        // Connect nodes
+        offlineSource.connect(gainNode).connect(panNode);
+        panNode.connect(delayNode);
+        delayNode.connect(reverbNode);
+        reverbNode.connect(reverbGain);
+        delayNode.connect(offlineCtx.destination);
+        reverbGain.connect(offlineCtx.destination);
+        panNode.connect(offlineCtx.destination);
+
+        offlineSource.start(clip.startTime, 0, clip.duration);
+
+        // Apply automation - linear ramp for volume, pan, delayFeedback
+        const params = ['volume','pan','delayFeedback'];
+        const startTime = clip.startTime;
+        const endTime = startTime + clip.duration;
+        params.forEach(param => {
+          const points = automationData[track.id][param];
+          let t = startTime;
+          while(t < endTime) {
+            let val = interpolateAutomation(points, t);
+            if(param === 'volume') {
+              gainNode.gain.setValueAtTime(val, t);
+            } else if(param === 'pan') {
+              panNode.pan.setValueAtTime(val, t);
+            } else if(param === 'delayFeedback') {
+              delayFeedbackGain.gain.setValueAtTime(val, t);
+            }
+            t += 0.1;
+          }
+        });
+
+        // Pitch shift skipped in offline render for now due to complexity
+      });
+    });
+
+    try {
+      const renderedBuffer = await offlineCtx.startRendering();
+
+      // WAV encode
+      function encodeWAV(buffer) {
+        const numChannels = buffer.numberOfChannels;
+        const sampleRate = buffer.sampleRate;
+        const format = 1; // PCM
+        const bitsPerSample = 16;
+        const blockAlign = numChannels * bitsPerSample / 8;
+        const byteRate = sampleRate * blockAlign;
+        const dataLength = buffer.length * blockAlign;
+
+        const bufferArray = new ArrayBuffer(44 + dataLength);
+        const view = new DataView(bufferArray);
+
+        function writeString(view, offset, string) {
+          for(let i=0; i<string.length; i++) {
+            view.setUint8(offset + i, string.charCodeAt(i));
+          }
+        }
+        // RIFF chunk descriptor
+        writeString(view, 0, 'RIFF');
+        view.setUint32(4, 36 + dataLength, true);
+        writeString(view, 8, 'WAVE');
+
+        // fmt sub-chunk
+        writeString(view, 12, 'fmt ');
+        view.setUint32(16, 16, true); // PCM chunk size
+        view.setUint16(20, format, true);
+        view.setUint16(22, numChannels, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, byteRate, true);
+        view.setUint16(32, blockAlign, true);
+        view.setUint16(34, bitsPerSample, true);
+
+        // data sub-chunk
+        writeString(view, 36, 'data');
+        view.setUint32(40, dataLength, true);
+
+        // Write interleaved PCM samples
+        let offset = 44;
+        for(let i=0; i<buffer.length; i++) {
+          for(let ch=0; ch<numChannels; ch++) {
+            let sample = buffer.getChannelData(ch)[i];
+            // Clamp & convert to 16-bit PCM
+            sample = Math.max(-1, Math.min(1, sample));
+            sample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+            view.setInt16(offset, sample, true);
+            offset += 2;
+          }
+        }
+        return new Blob([view], {type:'audio/wav'});
+      }
+      const wavBlob = encodeWAV(renderedBuffer);
+
+      const url = URL.createObjectURL(wavBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'phonk_pro_mix_' + Date.now() + '.wav';
+      a.click();
+      URL.revokeObjectURL(url);
+      log('Export finished: WAV file downloaded');
+    } catch(e) {
+      log('Export failed: ' + e.message);
+    }
+  };
+
+  // Initialize with empty track
+  const emptyBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 1, audioCtx.sampleRate);
+  addTrack(emptyBuffer, 'Empty Track');
+
+})();
 </script>
+
 </body>
 </html>
